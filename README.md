@@ -4,7 +4,7 @@ ESP32-P4-based USB HID gateway with a PC-facing USB Device connection and a down
 
 ## Project goal
 
-Provide transparent HID passthrough in normal operation and selective report modification in hotkey mode. The initial target setup is a Logitech G810 keyboard with a Logitech G502 mouse connected through the keyboard's integrated USB hub.
+Provide transparent HID passthrough in normal operation and selective report modification in hotkey mode. The observed target setup is a Logitech G815 keyboard and Logitech G502 mouse connected through the monitor's four-port USB hub. The G502 uses the G815's USB pass-through connection; the pass-through is a cable path, not an integrated hub.
 
 The firmware is currently an architectural skeleton. USB transport, HID parsing, report forwarding and output drivers are not yet implemented.
 

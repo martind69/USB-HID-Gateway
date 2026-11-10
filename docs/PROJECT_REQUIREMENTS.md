@@ -13,9 +13,12 @@ Normal operation should behave as a transparent HID passthrough wherever the USB
 
 The first target setup is:
 
-- Logitech G810 keyboard.
-- Logitech G502 mouse connected to the integrated USB hub of the G810.
+- Logitech G815 keyboard.
+- Logitech G502 mouse connected through the G815 USB pass-through connection.
+- Both USB connections terminate at separate downstream ports of the USB hub integrated into the ASUS ROG monitor.
 - PC connected to the USB Device side of the gateway.
+
+The G815 pass-through is not a hub. The monitor's Genesys Logic hub is the actual downstream hub that the ESP32-P4 Host must enumerate.
 
 This is a target configuration, not a claim that Logitech G HUB compatibility has already been achieved.
 
@@ -57,7 +60,9 @@ See [HID parser design](HID_PARSER_DESIGN.md) for the detailed parser specificat
 ## 4. USB behavior and compatibility
 
 - Use independent ESP32-P4 USB controller instances for Host and Device roles.
-- Host side must enumerate the downstream hub and the HID devices behind it.
+- Host side must enumerate the monitor's Genesys Logic hub and its downstream devices.
+- The G815 pass-through must not be modeled as an additional hub or USB tier.
+- The ASUS ROG monitor Aura function is a separate vendor-defined HID device on the same hub; enumerate and isolate it from the Logitech keyboard/mouse report path.
 - Device side must expose a PC-compatible HID interface configuration and handle the required enumeration and control-transfer behavior.
 - The PC-facing descriptor/interface strategy must be compatible with the downstream devices' reports.
 - A report parser alone does not provide transparent USB forwarding. Device identity, interface topology, endpoint characteristics, class requests and vendor-specific control transfers must be considered separately.
@@ -92,8 +97,9 @@ The exact ESP-IDF release and compiler/toolchain version are **Open**.
 
 The initial validation hardware is the G810/G502 combination described above. Tests must cover:
 
-- Enumeration of the keyboard and its integrated hub.
-- Enumeration and operation of the mouse behind that hub.
+- Enumeration of the monitor's Genesys Logic hub.
+- Enumeration of the G815 and G502 on separate monitor hub ports, including the G502 connection through the G815 pass-through cable.
+- Enumeration and isolation of the monitor's ASUS Aura HID function.
 - PC-side enumeration of the gateway.
 - Keyboard and mouse passthrough.
 - Report IDs and multiple HID interfaces.
@@ -127,13 +133,15 @@ No compatibility or performance target is considered met until it has been teste
 
 ## 10. Observed peripheral enumeration (2026-11-09)
 
-A Windows USB device-tree/HID capability capture is available for:
+A complete Windows USB device-tree/HID capability capture is available for the monitor hub, its ASUS Aura HID function, the Logitech G502 HERO and the Logitech G815:
 
 - Logitech G502 HERO: `VID:PID 046D:C08B`, revision `0x2703`.
 - Logitech G815: `VID:PID 046D:C33F`, revision `0x3102`.
 
-Both were enumerated at Full-Speed and expose two HID interfaces. The G502 mouse collection reports 16 buttons, signed relative 16-bit X/Y, and signed 8-bit wheel and AC Pan fields. Both devices expose vendor-defined HID report collections. The G815 capture identifies a G815 rather than the G810 named in the original target configuration.
+The monitor contains a four-port Genesys Logic USB hub (`05E3:0610`), with a paired SuperSpeed companion hub (`05E3:0620`). The G502 and G815 were enumerated at Full-Speed on sibling port chains (`2-7-3` and `2-7-4`). This is consistent with the G502 being connected through the G815 pass-through: the pass-through is a cable path, not a hub, and therefore creates no additional USB hub tier. The ASUS Aura HID function is on port `2-7-1`; port `2-7-2` is empty.
 
-**Important:** the two devices were recorded on sibling port chains (`2-7-3` and `2-7-4`). This does not validate the intended G502-through-G815-integrated-hub topology. Raw HID report descriptor bytes and actual report/control-transfer payloads were not captured.
+The G502 mouse collection reports 16 buttons, signed relative 16-bit X/Y, and signed 8-bit wheel and AC Pan fields. Both Logitech devices expose vendor-defined HID report collections. The monitor's ASUS Aura function is a separate vendor-defined HID interface with 64-byte interrupt IN and OUT endpoints.
+
+Raw HID report descriptor bytes and actual report/control-transfer payloads were not captured. The G815 is the observed keyboard; the former G810 target label must not be used for this hardware capture.
 
 See [USB device enumeration](hardware/USB_DEVICE_ENUMERATION.md) for the detailed tables, limitations and follow-up capture checklist. These observations do not establish G HUB compatibility.

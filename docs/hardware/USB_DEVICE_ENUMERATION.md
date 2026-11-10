@@ -14,18 +14,39 @@ The reports contain USB device/configuration/interface/endpoint information and 
 
 They also contain no actual HID report payloads or USB control-transfer traces. Therefore, the report semantics and G HUB protocol cannot be fully reconstructed from these files alone. The facts below are observations from the supplied captures; interpretations and remaining work are identified separately.
 
-## 2. Physical topology actually captured
+## 2. Physical topology captured
 
-| Device | Port chain | Companion port chain |
-|---|---|---|
-| G502 HERO | `2-7-3` | `2-23-3` |
-| G815 | `2-7-4` | `2-23-4` |
+The full Windows USB tree identifies the hub in the ASUS ROG monitor:
 
-Both devices are sibling ports below the same parent chain (`2-7`). This capture therefore shows the G502 and G815 connected independently to ports 3 and 4 of the same upstream hub. It does **not** show the G502 connected behind the USB hub integrated into the G815.
+| Hub property | Captured value |
+|---|---|
+| Manufacturer | Genesys Logic |
+| VID:PID | `05E3:0610` |
+| Product | USB2.1 Hub |
+| USB revision | `0x0210` |
+| Hub port chain | `2-7` |
+| Downstream ports | 4 |
+| Operating speed | High-Speed (480 Mbit/s) |
+| Power | Self-powered |
+| Transaction translator | Multi-TT |
+| Companion SuperSpeed hub | VID:PID `05E3:0620`, chain `2-23` |
 
-**Required follow-up:** connect the G502 to the G815's integrated hub and capture the full USB tree again. The G502's port chain should then identify the G815/hub as an intermediate parent.
+The four downstream ports are reported as follows:
 
-The project previously named a G810 as the target keyboard. The supplied capture identifies a G815. Whether the G815 replaces the G810 as the target remains an open project decision.
+| Monitor hub port | Device | VID:PID | Port chain |
+|---|---|---|---|
+| 1 | ASUS ROG Gaming Display Aura Device | `0B05:18DA` | `2-7-1` |
+| 2 | No device connected | – | `2-7-2` |
+| 3 | Logitech G502 HERO | `046D:C08B` | `2-7-3` |
+| 4 | Logitech G815 | `046D:C33F` | `2-7-4` |
+
+The G502 and G815 are sibling devices below the monitor hub. This is consistent with the user's physical clarification: the G502 is connected through the G815's USB pass-through connection, while the G815 itself is connected to another monitor hub port. The G815 pass-through is a direct cable path, not a USB hub, so it does not create an additional hub tier in the USB tree.
+
+The dump alone shows the logical USB topology, not the physical cable route. The pass-through route is established by the user's clarification.
+
+The monitor's ASUS Aura function is a separate HID device on port 1. It must not be mistaken for a Logitech interface or part of the keyboard/mouse composite HID device.
+
+The project documentation previously named a G810. This capture identifies the actual keyboard as a G815; the G815 should be treated as the current observed test device. Any remaining G810-specific requirement must be confirmed separately.
 
 ## 3. Common USB properties
 
@@ -45,6 +66,29 @@ The project previously named a G810 as the target keyboard. The supplied capture
 Although `bcdUSB` is 2.00, both devices operated at Full-Speed in these captures. The companion-port entries refer to paired host-controller ports and do not indicate that the devices themselves are operating at SuperSpeed.
 
 Both configuration descriptors report `bmAttributes = 0xA0` (bus-powered, remote-wakeup capable). The G502 reports `bMaxPower = 300 mA`; the G815 reports `500 mA`.
+
+## 3. ASUS monitor hub HID function
+
+The monitor also exposes an ASUS ROG Gaming Display Aura HID device on downstream hub port 1:
+
+| Property | Captured value |
+|---|---|
+| VID:PID | `0B05:18DA` |
+| Product | ROG Gaming Display Aura Device |
+| USB revision | `0x0110` |
+| Actual speed | Full-Speed (12 Mbit/s) |
+| Configuration | 1 |
+| HID interfaces | 1 |
+| HID report descriptor length | 53 bytes |
+| Interrupt IN endpoint | `0x82`, 64-byte maximum packet, 1 ms |
+| Interrupt OUT endpoint | `0x03`, 64-byte maximum packet, 1 ms |
+| Maximum current | 32 mA |
+
+Windows reports a vendor-defined HID top-level collection (Usage Page `0xFFA0`, Usage `0x0001`). Its capability report lists Input and Output report buffer lengths of 513 bytes and a Feature report buffer length of 8 bytes. The detailed capabilities identify Report ID 5 for a 512-byte Input payload, Report ID 4 for a 512-byte Output payload and Report ID 3 for a 7-byte Feature payload.
+
+The actual report descriptor bytes could not be read (`ERROR_GEN_FAILURE`). The report semantics and purpose are therefore unknown. Do not infer that this function controls the monitor's lighting solely from the product name, and do not route its reports as keyboard or mouse input.
+
+The 513-byte Windows HID buffer length is not the endpoint packet size. The endpoint maximum packet size remains 64 bytes; actual report transfer behavior must be captured separately.
 
 ## 4. Logitech G502 HERO
 
@@ -173,7 +217,7 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 
 ## 7. Required follow-up captures
 
-- [ ] Capture the G815 with the G502 connected through the G815 integrated hub; verify the port chain.
+- [x] Capture the monitor hub, G815, G502 and ASUS Aura HID function in one complete USB tree.\n- [ ] Capture the same topology through the ESP32-P4 Host and verify multi-device hub enumeration.
 - [ ] Confirm whether G815 replaces G810 as the project target.
 - [ ] Retrieve raw HID report descriptor bytes for all physical HID interfaces.
 - [ ] Capture actual mouse Input reports while testing buttons, X/Y, wheel and pan.
@@ -184,4 +228,4 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 
 ## 8. Provenance
 
-This document is derived from the two Windows USB device-tree/HID capability exports supplied on 2026-11-10. The original exports remain in the conversation attachments; this repository document is a structured analysis, not a byte-for-byte copy of those exports.
+This document is derived from the complete Windows USB device-tree/HID capability dump supplied on 2026-11-10. The original dump remains in the conversation attachment; this repository document is a structured analysis, not a byte-for-byte copy of the export.
