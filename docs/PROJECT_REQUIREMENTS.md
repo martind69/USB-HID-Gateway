@@ -123,3 +123,17 @@ No compatibility or performance target is considered met until it has been teste
 7. External DAC part, resolution and analog output requirements.
 8. GPIO pin allocation and electrical characteristics.
 9. Required G HUB features and the vendor-specific transactions they use.
+
+
+## 10. Observed peripheral enumeration (2026-11-09)
+
+A Windows USB device-tree/HID capability capture is available for:
+
+- Logitech G502 HERO: `VID:PID 046D:C08B`, revision `0x2703`.
+- Logitech G815: `VID:PID 046D:C33F`, revision `0x3102`.
+
+Both were enumerated at Full-Speed and expose two HID interfaces. The G502 mouse collection reports 16 buttons, signed relative 16-bit X/Y, and signed 8-bit wheel and AC Pan fields. Both devices expose vendor-defined HID report collections. The G815 capture identifies a G815 rather than the G810 named in the original target configuration.
+
+**Important:** the two devices were recorded on sibling port chains (`2-7-3` and `2-7-4`). This does not validate the intended G502-through-G815-integrated-hub topology. Raw HID report descriptor bytes and actual report/control-transfer payloads were not captured.
+
+See [USB device enumeration](hardware/USB_DEVICE_ENUMERATION.md) for the detailed tables, limitations and follow-up capture checklist. These observations do not establish G HUB compatibility.

@@ -152,3 +152,16 @@ Any unsupported transaction must be identified explicitly. Do not describe the g
 - [ ] Capture descriptors for every HID interface.
 - [ ] Capture G HUB-related control and Feature report traffic.
 - [ ] Verify PC-side enumeration and report delivery.
+
+
+## 7. Observed G502/G815 enumeration (2026-11-09)
+
+Windows USB device-tree and HID capability captures for a Logitech G502 HERO (`046D:C08B`) and Logitech G815 (`046D:C33F`) are documented in [USB device enumeration](hardware/USB_DEVICE_ENUMERATION.md).
+
+The captures show both devices at sibling port chains `2-7-3` and `2-7-4`. They were therefore connected independently to the same upstream hub in this test, not with the G502 behind the G815 integrated hub. The intended integrated-hub topology remains unverified.
+
+The captures identify the keyboard as a G815, whereas the original project target named a G810. Confirm the target model before treating the G815 data as the definitive keyboard baseline.
+
+Both devices negotiated Full-Speed (12 Mbit/s), despite reporting USB 2.0 in `bcdUSB`. Each exposes two HID interfaces. Their interface report descriptor lengths, endpoint packet sizes and Windows HID collection capabilities are recorded in the hardware note.
+
+The Windows output did not include the actual HID report descriptor bytes or USB transaction payloads. Vendor-defined report semantics and G HUB compatibility therefore remain unverified.
