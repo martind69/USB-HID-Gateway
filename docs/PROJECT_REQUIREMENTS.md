@@ -95,7 +95,7 @@ The exact ESP-IDF release and compiler/toolchain version are **Open**.
 
 ## 7. Target hardware and validation
 
-The initial validation hardware is the G810/G502 combination described above. Tests must cover:
+The initial validation hardware is the G815/G502 combination connected through the monitor hub as described above. Tests must cover:
 
 - Enumeration of the monitor's Genesys Logic hub.
 - Enumeration of the G815 and G502 on separate monitor hub ports, including the G502 connection through the G815 pass-through cable.
