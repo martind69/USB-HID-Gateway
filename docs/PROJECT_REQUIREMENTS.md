@@ -45,7 +45,7 @@ The exact hotkey combination, synthetic movement algorithm, amplitude, timing an
 
 ## 3. HID handling
 
-- Parse HID report descriptors dynamically; do not hard-code the G810 or G502 report layout.
+- Parse HID report descriptors dynamically; do not hard-code the G815 or G502 report layout.
 - Support multiple HID interfaces per USB device.
 - Support multiple Report IDs and Input, Output and Feature reports.
 - Handle variable-width and signed fields, fields crossing byte boundaries, usage ranges, collections and nested global state.

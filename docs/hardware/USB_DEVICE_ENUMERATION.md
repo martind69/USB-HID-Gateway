@@ -5,14 +5,16 @@ Source: Windows USB device-tree and HID capability reports supplied for this pro
 
 ## 1. Scope and limitations
 
-The captures identify two Logitech devices:
+The complete dump identifies the monitor's Genesys Logic hub, an ASUS ROG Gaming Display Aura HID function, and two Logitech devices:
 
+- Genesys Logic USB2.1 Hub, VID:PID `05E3:0610`, four downstream ports.
+- ASUS ROG Gaming Display Aura Device, VID:PID `0B05:18DA`.
 - G502 HERO Gaming Mouse, VID:PID `046D:C08B`, revision `0x2703`.
 - G815 RGB Mechanical Gaming Keyboard, VID:PID `046D:C33F`, revision `0x3102`.
 
-The reports contain USB device/configuration/interface/endpoint information and Windows HID capability information. They do **not** contain the actual HID report descriptor bytes: Windows reports descriptor lengths, but the descriptor read failed with `ERROR_INVALID_PARAMETER`.
+The dump contains USB device/configuration/interface/endpoint information and Windows HID capability information. It does **not** contain the actual HID report descriptor bytes: Windows reports descriptor lengths, but the descriptor reads failed (`ERROR_INVALID_PARAMETER` for the Logitech interfaces and `ERROR_GEN_FAILURE` for the ASUS Aura interface).
 
-They also contain no actual HID report payloads or USB control-transfer traces. Therefore, the report semantics and G HUB protocol cannot be fully reconstructed from these files alone. The facts below are observations from the supplied captures; interpretations and remaining work are identified separately.
+It also contains no actual HID report payloads or USB control-transfer traces. Therefore, the report semantics and G HUB protocol cannot be fully reconstructed from this dump alone. The facts below are observations from the supplied capture; interpretations and remaining work are identified separately.
 
 ## 2. Physical topology captured
 
@@ -67,7 +69,7 @@ Although `bcdUSB` is 2.00, both devices operated at Full-Speed in these captures
 
 Both configuration descriptors report `bmAttributes = 0xA0` (bus-powered, remote-wakeup capable). The G502 reports `bMaxPower = 300 mA`; the G815 reports `500 mA`.
 
-## 3. ASUS monitor hub HID function
+## 4. ASUS monitor hub HID function
 
 The monitor also exposes an ASUS ROG Gaming Display Aura HID device on downstream hub port 1:
 
@@ -90,7 +92,7 @@ The actual report descriptor bytes could not be read (`ERROR_GEN_FAILURE`). The 
 
 The 513-byte Windows HID buffer length is not the endpoint packet size. The endpoint maximum packet size remains 64 bytes; actual report transfer behavior must be captured separately.
 
-## 4. Logitech G502 HERO
+## 5. Logitech G502 HERO
 
 ### 4.1 USB interfaces
 
@@ -135,7 +137,7 @@ Their meaning and G HUB use are unknown. Report payloads, Report IDs, control re
 
 The Windows tree also lists Logitech filter/child components (including `logi_lamparray`) and a Microsoft HID VHF virtual device. These are Windows driver-stack objects, not additional physical interfaces in the device's 59-byte USB configuration descriptor.
 
-## 5. Logitech G815 keyboard
+## 6. Logitech G815 keyboard
 
 ### 5.1 USB interfaces
 
@@ -180,7 +182,7 @@ Two vendor-defined collections are listed:
 
 Their protocol semantics and G HUB usage are not identified by the capability report. The Windows tree also lists Logitech filter/child components and a Microsoft HID VHF virtual device; these must not be confused with physical USB interfaces.
 
-## 6. Interpretation notes for implementation
+## 7. Interpretation notes for implementation
 
 ### 6.1 Report lengths are not endpoint packet sizes
 
@@ -215,7 +217,7 @@ The current target devices demonstrate why the gateway must support:
 
 The G502 hotkey-mode modification must replace only the parsed X/Y fields. Buttons, wheel, AC Pan, vendor-defined fields and reserved bits must be preserved. Keyboard reports must continue to be forwarded.
 
-## 7. Required follow-up captures
+## 8. Required follow-up captures
 
 - [x] Capture the monitor hub, G815, G502 and ASUS Aura HID function in one complete USB tree.\n- [ ] Capture the same topology through the ESP32-P4 Host and verify multi-device hub enumeration.
 - [ ] Confirm whether G815 replaces G810 as the project target.
@@ -226,6 +228,6 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 - [ ] Capture G HUB traffic and identify the required vendor-defined reports and control requests.
 - [ ] Repeat the tests through the gateway after USB Host/Device transport is implemented.
 
-## 8. Provenance
+## 9. Provenance
 
 This document is derived from the complete Windows USB device-tree/HID capability dump supplied on 2026-11-10. The original dump remains in the conversation attachment; this repository document is a structured analysis, not a byte-for-byte copy of the export.
