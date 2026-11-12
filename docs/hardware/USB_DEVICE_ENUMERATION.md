@@ -12,9 +12,9 @@ The complete dump identifies the monitor's Genesys Logic hub, an ASUS ROG Gaming
 - G502 HERO Gaming Mouse, VID:PID `046D:C08B`, revision `0x2703`.
 - G815 RGB Mechanical Gaming Keyboard, VID:PID `046D:C33F`, revision `0x3102`.
 
-The dump contains USB device/configuration/interface/endpoint information and Windows HID capability information. It does **not** contain the actual HID report descriptor bytes: Windows reports descriptor lengths, but the descriptor reads failed (`ERROR_INVALID_PARAMETER` for the Logitech interfaces and `ERROR_GEN_FAILURE` for the ASUS Aura interface).
+The original Windows device-tree/HID-capability dump contains USB device/configuration/interface/endpoint information and Windows HID capability information. It does **not** contain the actual HID report descriptor bytes: Windows reports descriptor lengths, but the descriptor reads failed (`ERROR_INVALID_PARAMETER` for the Logitech interfaces and `ERROR_GEN_FAILURE` for the ASUS Aura interface). The original dump also contains no HID report payloads or USB control-transfer traces.
 
-It also contains no actual HID report payloads or USB control-transfer traces. Therefore, the report semantics and G HUB protocol cannot be fully reconstructed from this dump alone. The facts below are observations from the supplied capture; interpretations and remaining work are identified separately.
+Subsequent USBPcap captures supplied on 2026-11-11 and 2026-11-12 add actual Logitech control-transfer payloads. Those later findings are summarized below and documented in [G502 DPI and lighting control](LOGITECH_G502_PROTOCOL.md) and [G815 RGB and profile control](LOGITECH_G815_RGB_PROTOCOL.md). They do not replace the still-missing raw HID report descriptor bytes or the pending mouse/keyboard Input-report captures. The facts below distinguish the original Windows dump from later USBPcap evidence.
 
 ## 2. Physical topology captured
 
@@ -48,7 +48,7 @@ The dump alone shows the logical USB topology, not the physical cable route. The
 
 The monitor's ASUS Aura function is a separate HID device on port 1. It must not be mistaken for a Logitech interface or part of the keyboard/mouse composite HID device.
 
-The project documentation previously named a G810. This capture identifies the actual keyboard as a G815; the G815 should be treated as the current observed test device. Any remaining G810-specific requirement must be confirmed separately.
+The current observed keyboard and project test target is the Logitech G815 (`046D:C33F`). Earlier G810 references in the project plan were incorrect and have been removed. No separate G810 requirement is currently in scope.
 
 ## 3. Common USB properties
 
@@ -133,7 +133,7 @@ Two vendor-defined report collections are listed:
 - Usage Page `0xFF00`, Usage `0x0001`: 7-byte Input and 7-byte Output.
 - Usage Page `0xFF00`, Usage `0x0002`: 20-byte Input and 20-byte Output.
 
-Their meaning and G HUB use are unknown. Report payloads, Report IDs, control requests and timing must be captured before implementing protocol-specific behavior.
+The Windows capability table alone does not identify the meaning or G HUB use of these collections. Later USBPcap captures do confirm G502 vendor HID Output `SET_REPORT` control transfers on interface 1 through EP0, including Report IDs `0x10` and `0x11`. The DPI/profile and lighting findings, known byte meanings and unresolved fields are documented in [G502 DPI and lighting control](LOGITECH_G502_PROTOCOL.md). The available captures do not yet establish the semantics of every vendor collection or all Input/Feature traffic.
 
 The Windows tree also lists Logitech filter/child components (including `logi_lamparray`) and a Microsoft HID VHF virtual device. These are Windows driver-stack objects, not additional physical interfaces in the device's 59-byte USB configuration descriptor.
 
@@ -180,7 +180,7 @@ Two vendor-defined collections are listed:
 - Usage Page `0xFF43`, Usage `0x0602`: 20-byte Input and 20-byte Output.
 - Usage Page `0xFF43`, Usage `0x0604`: 64-byte Input and 64-byte Output.
 
-Their protocol semantics and G HUB usage are not identified by the capability report. The Windows tree also lists Logitech filter/child components and a Microsoft HID VHF virtual device; these must not be confused with physical USB interfaces.
+Their protocol semantics and G HUB usage are not identified by the Windows capability report alone. Later USBPcap captures confirm selected G815 vendor Output reports sent as HID class `SET_REPORT` control transfers on interface 1 through EP0; see [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md). The Windows tree also lists Logitech filter/child components and a Microsoft HID VHF virtual device; these must not be confused with physical USB interfaces.
 
 ### 5.4 Captured G815 RGB control traffic\n\nA USBPcap capture supplied on 2026-11-12 confirms G815 RGB Output reports sent as HID class `SET_REPORT` control transfers on interface 1 / EP0. The observed request uses Report ID `0x11` and a 20-byte payload. Independent RGB channel tests confirm 8-bit Red, Green and Blue values at offsets 4–6 for the positively identified `11 FF 10 6E` RGB report variant. The G815 also supports a global/default color and per-key custom colors; the tested custom-key set is W, S, A, D, E, R, F, Ctrl, Alt, Shift, Space and G1–G5.\n\nProfile changes, RGB-off operations and per-key addressing must be treated as distinct operations. The exact layouts of all report variants remain partially unresolved. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md) for payload examples, capture sequence and implementation constraints.\n\n## 7. Interpretation notes for implementation
 
@@ -199,7 +199,7 @@ The actual descriptor bytes and bus transactions are needed to resolve the exact
 
 ### 6.2 Output reports and endpoint direction
 
-Both devices list only interrupt IN endpoints in their configuration descriptors. Windows HID capabilities still report Output reports, including vendor-defined reports. For the G815, a separate USBPcap capture confirms HID class control `SET_REPORT` on interface 1 / EP0 for the observed RGB reports. This does not establish the transfer path for every G815 Output/Feature report or for the G502.
+Both devices list only interrupt IN endpoints in their configuration descriptors. Windows HID capabilities still report Output reports, including vendor-defined reports. Separate USBPcap captures confirm HID class control `SET_REPORT` on interface 1 / EP0 for the observed G815 RGB/profile reports and G502 DPI/profile/lighting reports. This does not establish the transfer path for every Output/Feature report, nor does it prove complete G HUB compatibility.
 
 ### 6.3 Design consequences
 
@@ -220,14 +220,14 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 ## 8. Required follow-up captures
 
 - [x] Capture the monitor hub, G815, G502 and ASUS Aura HID function in one complete USB tree.\n- [ ] Capture the same topology through the ESP32-P4 Host and verify multi-device hub enumeration.
-- [ ] Confirm whether G815 replaces G810 as the project target.
+- [x] Confirm G815 as the current observed keyboard and project test target; no separate G810 requirement is currently in scope.
 - [ ] Retrieve raw HID report descriptor bytes for all physical HID interfaces.
 - [ ] Capture actual mouse Input reports while testing buttons, X/Y, wheel and pan.
 - [ ] Capture keyboard typing, modifiers, media keys and secondary keyboard reports.
-- [ ] Capture Output/Feature reports and USB control-transfer setup packets.
+- [x] Capture selected G815 RGB/profile and G502 DPI/profile/lighting Output reports and their HID `SET_REPORT` setup packets; see the device-specific protocol documents.\n- [ ] Capture remaining Output/Feature traffic needed for G HUB compatibility.
 - [ ] Capture G HUB traffic and identify the required vendor-defined reports and control requests.
 - [ ] Repeat the tests through the gateway after USB Host/Device transport is implemented.
 
 ## 9. Provenance
 
-This document is derived from the complete Windows USB device-tree/HID capability dump supplied on 2026-11-10. The original dump remains in the conversation attachment; this repository document is a structured analysis, not a byte-for-byte copy of the export.
+The topology, configuration descriptors and Windows HID capability summaries in this document are derived from the complete Windows USB device-tree/HID capability dump supplied on 2026-11-10. The later G815 and G502 protocol observations are derived from separate USBPcap captures and controlled tests supplied on 2026-11-11 and 2026-11-12; their payload examples and interpretations are maintained in the linked device-specific protocol documents. The original capture files were supplied in the conversation and are not currently stored in this repository. This document is a structured analysis, not a byte-for-byte copy of the exports.
