@@ -146,7 +146,7 @@ The Windows tree also lists Logitech filter/child components (including `logi_la
 | 0 | 1 (Boot) | 1 (Keyboard) | 65 bytes | `0x81` | 8 bytes | 1 ms |
 | 1 | 0 | 0 | 188 bytes | `0x82` | 64 bytes | 1 ms |
 
-No interrupt OUT endpoint is listed. Windows reports Output reports for the keyboard and vendor-defined collections; the actual transfer path (for example, HID class control `SET_REPORT`) remains to be verified.
+No interrupt OUT endpoint is listed. A separate USBPcap capture now confirms that at least the observed G815 RGB Output reports are sent using HID class control `SET_REPORT` on interface 1 through EP0. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md).
 
 ### 5.2 Windows HID collections
 
@@ -182,7 +182,7 @@ Two vendor-defined collections are listed:
 
 Their protocol semantics and G HUB usage are not identified by the capability report. The Windows tree also lists Logitech filter/child components and a Microsoft HID VHF virtual device; these must not be confused with physical USB interfaces.
 
-## 7. Interpretation notes for implementation
+### 5.4 Captured G815 RGB control traffic\n\nA USBPcap capture supplied on 2026-11-12 confirms G815 RGB Output reports sent as HID class `SET_REPORT` control transfers on interface 1 / EP0. The observed request uses Report ID `0x11` and a 20-byte payload. Independent RGB channel tests confirm 8-bit Red, Green and Blue values at offsets 4–6 for the positively identified `11 FF 10 6E` RGB report variant. The G815 also supports a global/default color and per-key custom colors; the tested custom-key set is W, S, A, D, E, R, F, Ctrl, Alt, Shift, Space and G1–G5.\n\nProfile changes, RGB-off operations and per-key addressing must be treated as distinct operations. The exact layouts of all report variants remain partially unresolved. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md) for payload examples, capture sequence and implementation constraints.\n\n## 7. Interpretation notes for implementation
 
 ### 6.1 Report lengths are not endpoint packet sizes
 
@@ -199,7 +199,7 @@ The actual descriptor bytes and bus transactions are needed to resolve the exact
 
 ### 6.2 Output reports and endpoint direction
 
-Both devices list only interrupt IN endpoints in their configuration descriptors. Windows HID capabilities still report Output reports, including vendor-defined reports. Determine whether these are sent with HID class control `SET_REPORT` or another mechanism. The current captures do not establish the transfer path.
+Both devices list only interrupt IN endpoints in their configuration descriptors. Windows HID capabilities still report Output reports, including vendor-defined reports. For the G815, a separate USBPcap capture confirms HID class control `SET_REPORT` on interface 1 / EP0 for the observed RGB reports. This does not establish the transfer path for every G815 Output/Feature report or for the G502.
 
 ### 6.3 Design consequences
 
