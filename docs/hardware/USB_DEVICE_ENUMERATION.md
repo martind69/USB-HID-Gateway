@@ -182,7 +182,13 @@ Two vendor-defined collections are listed:
 
 Their protocol semantics and G HUB usage are not identified by the Windows capability report alone. Later USBPcap captures confirm selected G815 vendor Output reports sent as HID class `SET_REPORT` control transfers on interface 1 through EP0; see [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md). The Windows tree also lists Logitech filter/child components and a Microsoft HID VHF virtual device; these must not be confused with physical USB interfaces.
 
-### 5.4 Captured G815 RGB control traffic\n\nA USBPcap capture supplied on 2026-11-12 confirms G815 RGB Output reports sent as HID class `SET_REPORT` control transfers on interface 1 / EP0. The observed request uses Report ID `0x11` and a 20-byte payload. Independent RGB channel tests confirm 8-bit Red, Green and Blue values at offsets 4–6 for the positively identified `11 FF 10 6E` RGB report variant. The G815 also supports a global/default color and per-key custom colors; the tested custom-key set is W, S, A, D, E, R, F, Ctrl, Alt, Shift, Space and G1–G5.\n\nProfile changes, RGB-off operations and per-key addressing must be treated as distinct operations. The exact layouts of all report variants remain partially unresolved. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md) for payload examples, capture sequence and implementation constraints.\n\n## 7. Interpretation notes for implementation
+### 5.4 Captured G815 RGB control traffic
+
+A USBPcap capture supplied on 2026-11-12 confirms G815 RGB Output reports sent as HID class `SET_REPORT` control transfers on interface 1 / EP0. The observed request uses Report ID `0x11` and a 20-byte payload. Independent RGB channel tests confirm 8-bit Red, Green and Blue values at offsets 4–6 for the positively identified `11 FF 10 6E` RGB report variant. The G815 also supports a global/default color and per-key custom colors; the tested custom-key set is W, S, A, D, E, R, F, Ctrl, Alt, Shift, Space and G1–G5.
+
+Profile changes, RGB-off operations and per-key addressing must be treated as distinct operations. The exact layouts of all report variants remain partially unresolved. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md) for payload examples, capture sequence and implementation constraints.
+
+## 7. Interpretation notes for implementation
 
 ### 6.1 Report lengths are not endpoint packet sizes
 
