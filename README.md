@@ -4,7 +4,7 @@ ESP32-P4-based USB HID gateway with a PC-facing USB Device connection and a down
 
 ## Project goal
 
-Provide transparent HID passthrough in normal operation and selective report modification in hotkey mode. The observed target setup is a Logitech G815 keyboard and Logitech G502 mouse connected through the monitor's four-port USB hub. The G502 uses the G815's USB pass-through connection; the pass-through is a cable path, not an integrated hub.
+Provide transparent HID passthrough in normal operation and selective report modification in hotkey mode. The observed target setup is a Logitech G815 keyboard and G502 HERO mouse connected through the monitor's four-port USB hub. The G502 uses the G815's USB pass-through connection; the pass-through is a cable path, not an integrated hub.
 
 The firmware is currently an architectural skeleton. USB transport, HID parsing, report forwarding and output drivers are not yet implemented.
 
@@ -14,6 +14,7 @@ The firmware is currently an architectural skeleton. USB transport, HID parsing,
 - [USB topology](docs/USB_TOPOLOGY.md) – physical connection and controller responsibilities.
 - [USB device enumeration](docs/hardware/USB_DEVICE_ENUMERATION.md) – observed G502/G815 descriptors, HID collections, endpoints and topology findings.
 - [G815 RGB and profile control](docs/hardware/LOGITECH_G815_RGB_PROTOCOL.md) – USBPcap findings for RGB values, global/default color, per-key addressing and profile transitions.
+- [G502 DPI and lighting control](docs/hardware/LOGITECH_G502_PROTOCOL.md) – captured DPI values, profile selection, primary/logo fixed colors and effect-frequency fields.
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md) – staged development and verification gates.
 - [Module architecture](docs/ARCHITECTURE.md) – software modules and data flow.
 - [Universal HID parser design](docs/HID_PARSER_DESIGN.md) – descriptor parser requirements and proposed design.
