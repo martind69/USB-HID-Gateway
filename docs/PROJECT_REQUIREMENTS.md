@@ -145,3 +145,18 @@ The G502 mouse collection reports 16 buttons, signed relative 16-bit X/Y, and si
 Raw HID report descriptor bytes and actual report/control-transfer payloads were not captured. The G815 is the observed keyboard; the former G810 target label must not be used for this hardware capture.
 
 See [USB device enumeration](hardware/USB_DEVICE_ENUMERATION.md) for the detailed tables, limitations and follow-up capture checklist. These observations do not establish G HUB compatibility.
+
+
+## 11. Observed G815 RGB and profile-control behavior (2026-11-12)
+
+USBPcap captures confirm that G815 Output reports are sent as HID class `SET_REPORT` control transfers on interface 1, EP0, using Report ID `0x11` and a 20-byte payload. A representative setup packet uses `bmRequestType=0x21`, `bRequest=0x09`, `wValue=0x0211`, `wIndex=1` and `wLength=20`.
+
+For the observed `11 FF 10 6E` RGB report variant, offsets 4, 5 and 6 contain independent 8-bit Red, Green and Blue values. This has been confirmed by changing individual color channels.
+
+The G815 lighting configuration also has a global/default color (observed by the user as RGB(0,255,255), applied to all keys) and individually configurable keys: W, S, A, D, E, R, F, Ctrl, Alt, Shift, Space and G1–G5.
+
+Profile changes, RGB-off operations and per-key addressing are distinct actions. In the user's latest capture interpretation, frame group 55xx represents RGB off and is not a profile change; group 2xxx contains a profile change among other configuration traffic; group 6xxx contains targeted key-addressing traffic; group 8xxx switches back to the Desktop/default profile.
+
+The complete report layouts and semantics of all observed subtypes remain partially unknown. In particular, do not assume that every `10 6E` report is a simple RGB triplet or modify offsets 4–6 without positively classifying the report variant.
+
+See [G815 RGB and profile control findings](hardware/LOGITECH_G815_RGB_PROTOCOL.md) for captured payloads, confidence levels and implementation constraints. These captures establish specific G815 behavior but do not establish complete G HUB compatibility.
