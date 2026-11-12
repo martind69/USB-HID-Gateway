@@ -188,7 +188,7 @@ A USBPcap capture supplied on 2026-11-12 confirms G815 RGB Output reports sent a
 
 Profile changes, RGB-off operations and per-key addressing must be treated as distinct operations. The exact layouts of all report variants remain partially unresolved. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md) for payload examples, capture sequence and implementation constraints.
 
-## 7. Interpretation notes for implementation
+## 6. Interpretation notes for implementation
 
 ### 6.1 Report lengths are not endpoint packet sizes
 
@@ -223,7 +223,7 @@ The current target devices demonstrate why the gateway must support:
 
 The G502 hotkey-mode modification must replace only the parsed X/Y fields. Buttons, wheel, AC Pan, vendor-defined fields and reserved bits must be preserved. Keyboard reports must continue to be forwarded.
 
-## 8. Required follow-up captures
+## 7. Required follow-up captures
 
 - [x] Capture the monitor hub, G815, G502 and ASUS Aura HID function in one complete USB tree.
 - [ ] Capture the same topology through the ESP32-P4 Host and verify multi-device hub enumeration.
@@ -236,6 +236,6 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 - [ ] Capture G HUB traffic and identify the required vendor-defined reports and control requests.
 - [ ] Repeat the tests through the gateway after USB Host/Device transport is implemented.
 
-## 9. Provenance
+## 8. Provenance
 
 The topology, configuration descriptors and Windows HID capability summaries in this document are derived from the complete Windows USB device-tree/HID capability dump supplied on 2026-11-10. The later G815 and G502 protocol observations are derived from separate USBPcap captures and controlled tests supplied on 2026-11-11 and 2026-11-12; their payload examples and interpretations are maintained in the linked device-specific protocol documents. The original capture files were supplied in the conversation and are not currently stored in this repository. This document is a structured analysis, not a byte-for-byte copy of the exports.
