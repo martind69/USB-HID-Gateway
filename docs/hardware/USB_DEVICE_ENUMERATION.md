@@ -221,7 +221,7 @@ The current target devices demonstrate why the gateway must support:
 - Signed wheel and pan fields of 8 bits.
 - Unknown fields that must remain intact during selective modification.
 
-The G502 hotkey-mode modification must replace only the parsed X/Y fields. Buttons, wheel, AC Pan, vendor-defined fields and reserved bits must be preserved. Keyboard reports must continue to be forwarded.
+In Proxy mode, the configured routing policy determines which semantic input events are consumed. Mapped events are consumed; unmapped events continue to the PC. For mixed reports, unrelated fields must be preserved. Mouse X/Y must be resolved from the parsed descriptor; buttons, wheel, AC Pan, vendor-defined fields and reserved bits must not be discarded unless explicitly mapped.
 
 ## 8. Required follow-up captures
 
@@ -230,9 +230,10 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 - [x] Confirm G815 as the current observed keyboard and project test target; no separate G810 requirement is currently in scope.
 - [ ] Retrieve raw HID report descriptor bytes for all physical HID interfaces.
 - [ ] Capture actual mouse Input reports while testing buttons, X/Y, wheel and pan.
-- [ ] Capture keyboard typing, modifiers, media keys and secondary keyboard reports.
+- [ ] Capture keyboard typing, modifiers, media keys, secondary keyboard reports and the G1 press/release encoding.
 - [x] Capture selected G815 RGB/profile and G502 DPI/profile/lighting Output reports and their HID `SET_REPORT` setup packets; see the device-specific protocol documents.
 - [ ] Capture remaining Output/Feature traffic needed for G HUB compatibility.
+- [ ] Capture G1 LED on/off traffic and identify the exact mode-feedback command.
 - [ ] Capture G HUB traffic and identify the required vendor-defined reports and control requests.
 - [ ] Repeat the tests through the gateway after USB Host/Device transport is implemented.
 
