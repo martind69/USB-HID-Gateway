@@ -225,12 +225,14 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 
 ## 8. Required follow-up captures
 
-- [x] Capture the monitor hub, G815, G502 and ASUS Aura HID function in one complete USB tree.\n- [ ] Capture the same topology through the ESP32-P4 Host and verify multi-device hub enumeration.
+- [x] Capture the monitor hub, G815, G502 and ASUS Aura HID function in one complete USB tree.
+- [ ] Capture the same topology through the ESP32-P4 Host and verify multi-device hub enumeration.
 - [x] Confirm G815 as the current observed keyboard and project test target; no separate G810 requirement is currently in scope.
 - [ ] Retrieve raw HID report descriptor bytes for all physical HID interfaces.
 - [ ] Capture actual mouse Input reports while testing buttons, X/Y, wheel and pan.
 - [ ] Capture keyboard typing, modifiers, media keys and secondary keyboard reports.
-- [x] Capture selected G815 RGB/profile and G502 DPI/profile/lighting Output reports and their HID `SET_REPORT` setup packets; see the device-specific protocol documents.\n- [ ] Capture remaining Output/Feature traffic needed for G HUB compatibility.
+- [x] Capture selected G815 RGB/profile and G502 DPI/profile/lighting Output reports and their HID `SET_REPORT` setup packets; see the device-specific protocol documents.
+- [ ] Capture remaining Output/Feature traffic needed for G HUB compatibility.
 - [ ] Capture G HUB traffic and identify the required vendor-defined reports and control requests.
 - [ ] Repeat the tests through the gateway after USB Host/Device transport is implemented.
 
