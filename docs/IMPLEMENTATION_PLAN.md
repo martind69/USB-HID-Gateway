@@ -11,6 +11,7 @@ Status: Planned. A milestone is complete only after its stated verification crit
 - Do not claim passthrough or G HUB compatibility until tested on the actual hardware.
 - Use bounded resources and explicit error handling.
 - Keep USB callbacks non-blocking and move parsing/routing work to task context.
+- Treat the Logitech G815 keyboard and G502 HERO mouse as the current observed test devices. The earlier G810 reference is obsolete unless a separate G810 test requirement is explicitly reintroduced.
 
 ## Milestone 0 – Confirm hardware and toolchain
 
@@ -49,14 +50,15 @@ Tasks:
 
 1. Initialize the independent Host controller.
 2. Enumerate a directly connected test HID device.
-3. Add hub support and enumerate the G810 integrated hub.
-4. Enumerate the G502 behind that hub.
+3. Add hub support and enumerate the Genesys Logic hub integrated into the ASUS ROG monitor.
+4. Enumerate the G502 HERO and G815 as downstream devices on the monitor hub.
 5. Track device and interface lifecycle, including disconnect/reconnect.
 
 Verification:
 
-- G810, its hub and G502 are discovered.
-- Every HID interface and endpoint is identified.
+- The monitor hub, G815 and G502 are discovered as separate USB devices.
+- The G815 pass-through cable is not treated as a hub or an additional enumeration tier.
+- Every required HID interface and endpoint is identified.
 - Disconnecting one downstream device does not corrupt the state of another.
 
 ## Milestone 3 – Universal HID parser
@@ -105,7 +107,7 @@ Tasks:
 2. Expose compatible keyboard and mouse report descriptors.
 3. Implement required standard and HID class control requests.
 4. Identify and implement required vendor-specific transactions.
-5. Validate G HUB operation with the actual G810/G502 setup.
+5. Validate G HUB operation with the actual G815/G502 setup.
 
 Verification:
 
@@ -174,7 +176,11 @@ Verification:
 | ESP-IDF project skeleton | Present |
 | Module separation | Present |
 | Project requirements | Documented |
-| USB topology | Documented logically; board routing open |
+| Physical peripheral topology | Documented; ESP32-P4 board routing open |
+| G815 RGB/profile protocol | Partially reverse-engineered; see hardware protocol document |
+| G502 DPI/profile/lighting protocol | Partially reverse-engineered; see hardware protocol document |
+| G502 mouse Input report payloads | Capture/analysis pending |
+| Raw HID report descriptor bytes | Retrieval pending; current enumeration document records Windows descriptor lengths and capability data |
 | HID parser design | Documented; implementation pending |
 | USB Host | Placeholder |
 | USB Device | Placeholder |
