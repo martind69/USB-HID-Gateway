@@ -13,6 +13,7 @@ The firmware is currently an architectural skeleton. USB transport, HID parsing,
 - [Project requirements](docs/PROJECT_REQUIREMENTS.md) – functional requirements, target hardware and open decisions.
 - [USB topology](docs/USB_TOPOLOGY.md) – physical connection and controller responsibilities.
 - [USB device enumeration](docs/hardware/USB_DEVICE_ENUMERATION.md) – observed G502/G815 descriptors, HID collections, endpoints and topology findings.
+- [G815 RGB and profile control](docs/hardware/LOGITECH_G815_RGB_PROTOCOL.md) – USBPcap findings for RGB values, global/default color, per-key addressing and profile transitions.
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md) – staged development and verification gates.
 - [Module architecture](docs/ARCHITECTURE.md) – software modules and data flow.
 - [Universal HID parser design](docs/HID_PARSER_DESIGN.md) – descriptor parser requirements and proposed design.
