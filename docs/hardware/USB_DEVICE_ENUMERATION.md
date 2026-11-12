@@ -94,7 +94,7 @@ The 513-byte Windows HID buffer length is not the endpoint packet size. The endp
 
 ## 5. Logitech G502 HERO
 
-### 6.1 USB interfaces
+### 5.1 USB interfaces
 
 | Interface | Subclass | Protocol | HID report descriptor length | Interrupt IN endpoint | Max packet | Interval |
 |---|---:|---:|---:|---|---:|---:|
@@ -103,7 +103,7 @@ The 513-byte Windows HID buffer length is not the endpoint packet size. The endp
 
 The configuration descriptor lists no interrupt OUT endpoint. Windows nevertheless reports Output reports for the vendor-defined HID collections. Their actual transfer path must be captured; do not assume an interrupt OUT endpoint.
 
-### 6.2 Windows HID collections
+### 5.2 Windows HID collections
 
 | Usage page | Usage | Input length | Output length | Feature length |
 |---|---|---:|---:|---:|
@@ -126,7 +126,7 @@ This is not a simple 3-button mouse with 8-bit X/Y fields. The proxy must parse 
 
 Windows also exposes keyboard, consumer and system-control collections under the G502 device. Their exact relationship to the physical interface descriptors cannot be established without the raw report descriptor bytes. Do not assume that each Windows HID collection corresponds to a separate physical USB interface.
 
-### 6.3 Vendor-defined collections
+### 5.3 Vendor-defined collections
 
 Two vendor-defined report collections are listed:
 
@@ -139,7 +139,7 @@ The Windows tree also lists Logitech filter/child components (including `logi_la
 
 ## 6. Logitech G815 keyboard
 
-### 5.1 USB interfaces
+### 6.1 USB interfaces
 
 | Interface | Subclass | Protocol | HID report descriptor length | Interrupt IN endpoint | Max packet | Interval |
 |---|---:|---:|---:|---|---:|---:|
@@ -148,7 +148,7 @@ The Windows tree also lists Logitech filter/child components (including `logi_la
 
 No interrupt OUT endpoint is listed. A separate USBPcap capture now confirms that at least the observed G815 RGB Output reports are sent using HID class control `SET_REPORT` on interface 1 through EP0. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md).
 
-### 5.2 Windows HID collections
+### 6.2 Windows HID collections
 
 | Usage page | Usage | Input length | Output length | Feature length |
 |---|---|---:|---:|---:|
@@ -173,7 +173,7 @@ The existence of this Windows mouse collection does not prove that the G815 has 
 
 The Consumer Control collection lists seven controls: Mute, Volume Decrement, Volume Increment, Play/Pause, Stop, Scan Previous Track and Scan Next Track.
 
-### 5.3 Vendor-defined collections
+### 6.3 Vendor-defined collections
 
 Two vendor-defined collections are listed:
 
