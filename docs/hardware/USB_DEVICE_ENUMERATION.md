@@ -94,7 +94,7 @@ The 513-byte Windows HID buffer length is not the endpoint packet size. The endp
 
 ## 5. Logitech G502 HERO
 
-### 4.1 USB interfaces
+### 6.1 USB interfaces
 
 | Interface | Subclass | Protocol | HID report descriptor length | Interrupt IN endpoint | Max packet | Interval |
 |---|---:|---:|---:|---|---:|---:|
@@ -103,7 +103,7 @@ The 513-byte Windows HID buffer length is not the endpoint packet size. The endp
 
 The configuration descriptor lists no interrupt OUT endpoint. Windows nevertheless reports Output reports for the vendor-defined HID collections. Their actual transfer path must be captured; do not assume an interrupt OUT endpoint.
 
-### 4.2 Windows HID collections
+### 6.2 Windows HID collections
 
 | Usage page | Usage | Input length | Output length | Feature length |
 |---|---|---:|---:|---:|
@@ -126,7 +126,7 @@ This is not a simple 3-button mouse with 8-bit X/Y fields. The proxy must parse 
 
 Windows also exposes keyboard, consumer and system-control collections under the G502 device. Their exact relationship to the physical interface descriptors cannot be established without the raw report descriptor bytes. Do not assume that each Windows HID collection corresponds to a separate physical USB interface.
 
-### 4.3 Vendor-defined collections
+### 6.3 Vendor-defined collections
 
 Two vendor-defined report collections are listed:
 
@@ -182,15 +182,15 @@ Two vendor-defined collections are listed:
 
 Their protocol semantics and G HUB usage are not identified by the Windows capability report alone. Later USBPcap captures confirm selected G815 vendor Output reports sent as HID class `SET_REPORT` control transfers on interface 1 through EP0; see [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md). The Windows tree also lists Logitech filter/child components and a Microsoft HID VHF virtual device; these must not be confused with physical USB interfaces.
 
-### 5.4 Captured G815 RGB control traffic
+### 6.4 Captured G815 RGB control traffic
 
 A USBPcap capture supplied on 2026-11-12 confirms G815 RGB Output reports sent as HID class `SET_REPORT` control transfers on interface 1 / EP0. The observed request uses Report ID `0x11` and a 20-byte payload. Independent RGB channel tests confirm 8-bit Red, Green and Blue values at offsets 4–6 for the positively identified `11 FF 10 6E` RGB report variant. The G815 also supports a global/default color and per-key custom colors; the tested custom-key set is W, S, A, D, E, R, F, Ctrl, Alt, Shift, Space and G1–G5.
 
 Profile changes, RGB-off operations and per-key addressing must be treated as distinct operations. The exact layouts of all report variants remain partially unresolved. See [G815 RGB and profile control findings](LOGITECH_G815_RGB_PROTOCOL.md) for payload examples, capture sequence and implementation constraints.
 
-## 6. Interpretation notes for implementation
+## 7. Interpretation notes for implementation
 
-### 6.1 Report lengths are not endpoint packet sizes
+### 7.1 Report lengths are not endpoint packet sizes
 
 For example, Windows reports a 9-byte mouse Input report while the corresponding interrupt endpoint has an 8-byte maximum packet size. Windows HID capability lengths may include the Report ID byte slot even when the report uses no Report ID. They are not a direct measurement of USB transaction payload length.
 
@@ -203,11 +203,11 @@ Keep these concepts separate:
 
 The actual descriptor bytes and bus transactions are needed to resolve the exact layouts and lengths.
 
-### 6.2 Output reports and endpoint direction
+### 7.2 Output reports and endpoint direction
 
 Both devices list only interrupt IN endpoints in their configuration descriptors. Windows HID capabilities still report Output reports, including vendor-defined reports. Separate USBPcap captures confirm HID class control `SET_REPORT` on interface 1 / EP0 for the observed G815 RGB/profile reports and G502 DPI/profile/lighting reports. This does not establish the transfer path for every Output/Feature report, nor does it prove complete G HUB compatibility.
 
-### 6.3 Design consequences
+### 7.3 Design consequences
 
 The current target devices demonstrate why the gateway must support:
 
@@ -223,7 +223,7 @@ The current target devices demonstrate why the gateway must support:
 
 The G502 hotkey-mode modification must replace only the parsed X/Y fields. Buttons, wheel, AC Pan, vendor-defined fields and reserved bits must be preserved. Keyboard reports must continue to be forwarded.
 
-## 7. Required follow-up captures
+## 8. Required follow-up captures
 
 - [x] Capture the monitor hub, G815, G502 and ASUS Aura HID function in one complete USB tree.
 - [ ] Capture the same topology through the ESP32-P4 Host and verify multi-device hub enumeration.
@@ -236,6 +236,6 @@ The G502 hotkey-mode modification must replace only the parsed X/Y fields. Butto
 - [ ] Capture G HUB traffic and identify the required vendor-defined reports and control requests.
 - [ ] Repeat the tests through the gateway after USB Host/Device transport is implemented.
 
-## 8. Provenance
+## 9. Provenance
 
 The topology, configuration descriptors and Windows HID capability summaries in this document are derived from the complete Windows USB device-tree/HID capability dump supplied on 2026-11-10. The later G815 and G502 protocol observations are derived from separate USBPcap captures and controlled tests supplied on 2026-11-11 and 2026-11-12; their payload examples and interpretations are maintained in the linked device-specific protocol documents. The original capture files were supplied in the conversation and are not currently stored in this repository. This document is a structured analysis, not a byte-for-byte copy of the exports.
