@@ -40,7 +40,7 @@ The event callback is invoked synchronously by the routing call. It must be shor
 ## Resource and concurrency notes
 
 - The initial implementation supports at most 64 field descriptors per report and 24 mapping rules.
-- Reports up to 64 bytes use stack scratch space in the proxy. Larger reports allocate temporary heap scratch space. If allocation fails, the original report is forwarded unchanged.
+- The proxy uses a fixed 64-byte stack scratch buffer and performs no heap allocation in the report path. Larger reports are forwarded unchanged and reported as unsupported for mapping until a bounded transport-owned scratch buffer is provided.
 - The configuration and callback setters are not internally synchronized. Configure them before starting USB report processing, or protect updates at the application/task boundary.
 - The parser and transport must own report buffers for the duration of the synchronous routing call.
 
