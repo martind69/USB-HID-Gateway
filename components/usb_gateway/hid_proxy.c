@@ -53,11 +53,11 @@ bool hid_proxy_route_input_report(
 
 	if (result != MAPPING_OK) {
 		/* Fail open: never drop an input report because mapping failed. */
-		forwarded = forward(report_id, input_payload, payload_length, context);
+		(void)forward(report_id, input_payload, payload_length, context);
 		if (used_heap) {
 			free(routed_payload);
 		}
-		return false && forwarded;
+		return false;
 	}
 
 	forwarded = forward(
