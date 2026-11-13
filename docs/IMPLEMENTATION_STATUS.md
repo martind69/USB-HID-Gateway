@@ -4,6 +4,24 @@ Date: 2026-11-13
 
 ## Implemented in this branch
 
+### PC-facing USB HID enumeration proof of concept
+
+Files:
+- `components/usb_gateway/usb_device.c`
+- `components/usb_gateway/idf_component.yml`
+- `docs/USB_DEVICE_POC_TEST.md`
+
+Implemented:
+- Added Espressif `esp_tinyusb` managed dependency.
+- Initialized the ESP32-P4 USB Device stack through TinyUSB.
+- Added one HID interface containing keyboard and mouse top-level collections.
+- Added Full-Speed and High-Speed configuration descriptors.
+- Added HID report descriptor and class request callbacks.
+- Added mount/detach state reporting to runtime diagnostics.
+- Deliberately sends no synthetic key or mouse input during enumeration testing.
+
+This is a source-level proof of concept only. It has not yet been built or verified on the board. The first acceptance target is stable Windows enumeration and successful retrieval of both HID collections. It does not implement report forwarding.
+
 ### Field-level mapping and proxy routing interface
 
 Files:
@@ -24,20 +42,32 @@ Implemented:
 - Synchronous semantic event callback for mapped fields.
 - Per-report copy of the mapping configuration so a callback cannot change the rules halfway through one report.
 
-A host test source is present at `tests/host/test_mapping.c`.
+A host test source is present at `tests/host/test_mapping.c`, but it is not yet wired into CMake/CI.
+
+## Existing diagnostics
+
+The diagnostics component provides a five-second serial summary, bounded host-device registry, proxy counters, I2C health hooks, heap and uptime reporting. Host enumeration and I2C health remain unavailable until their drivers are implemented and connected.
 
 ## Integration still pending
 
-- The generic HID parser does not yet populate `mapping_report_field_t`.
-- The USB Host/Device backends do not yet call `hid_proxy_route_input_report()`.
-- JSON loading and atomic runtime configuration replacement are not yet connected.
-- WASD vector calculation, mouse shaping and digital action state machines are not yet implemented by this interface.
-- G1 event decoding and G1 LED feedback remain unbound pending protocol evidence.
-- Keyboard Array rollover behavior and mixed-report reconstruction require parser-level tests.
-- No end-to-end passthrough or G HUB compatibility is claimed.
+- USB Host stack and hub/device enumeration.
+- Simultaneous USB Host and USB Device operation on the selected Waveshare board.
+- HID Host interface and interrupt-IN report reception.
+- Retrieval and storage of raw HID report descriptors.
+- Generic HID 1.11 parser and parser-populated mapping metadata.
+- USB Device report submission from the proxy router.
+- USB Device Output/Feature and vendor control-transfer handling.
+- JSON loading and atomic runtime configuration replacement.
+- WASD vector calculation, mouse shaping and digital action state machines.
+- G1 event decoding and G1 LED feedback.
+- Keyboard Array rollover and mixed-report reconstruction tests.
+- ADC/DAC/GPIO hardware drivers and electrical validation.
+- End-to-end passthrough and G HUB compatibility tests.
 
 ## Build and verification
 
-The code in this branch has not been independently built in the current environment. The project owner is compiling the current checkout with ESP-IDF 6.1. A successful local build result should be recorded only after the build completes without errors.
+The USB HID proof of concept has not been independently built in the current environment. The project owner must run the steps in `docs/USB_DEVICE_POC_TEST.md` using ESP-IDF 6.1 and the Waveshare ESP32-P4-Module-DEV-KIT.
 
-The host test source is not yet wired into CMake/CI. Compile it together with `mapping.c` using a C11 compiler and run it before treating the mapping behavior as verified.
+Do not mark the USB Device milestone complete until the firmware builds, Windows enumerates the keyboard and mouse collections after reconnects, and the programming COM connection remains available.
+
+No end-to-end USB Host-to-Device passthrough or G HUB compatibility is claimed.
