@@ -15,14 +15,14 @@ Files:
 Implemented:
 - Added Espressif `esp_tinyusb` managed dependency.
 - Initialized the ESP32-P4 USB Device stack through TinyUSB.
-- Explicitly selected the ESP32-P4 Full-Speed OTG port for the board's Type-C 6 connector.
+- Explicitly selected the ESP32-P4 Full-Speed OTG port for the intended PC-facing Type-C 6 HID path.
 - Added one HID interface containing keyboard and mouse top-level collections.
-- Added the Full-Speed HID configuration descriptor for the Type-C 6 FS OTG path.
+- Added the Full-Speed HID configuration descriptor.
 - Added HID report descriptor and class request callbacks.
 - Added mount/detach state reporting to runtime diagnostics.
 - Deliberately sends no synthetic key or mouse input during enumeration testing.
 
-This is a source-level proof of concept only. It has not yet been built or verified on hardware. The supplied Windows reports identify Type-C 4 as the CH343P UART bridge (`1A86:55D3`) and Type-C 6 as USB Serial/JTAG (`303A:1001`). The Waveshare schematic shows Type-C 6 routed through FSUSB42 mux U15, which can select USB Serial/JTAG or the ESP32-P4 USB1.1 Full-Speed OTG pair. The PoC was selecting the wrong controller (HS) for this connector; it is corrected to FS OTG. U15 selection and simultaneous HS Host + FS Device operation still require hardware validation. See `docs/WAVESHARE_USB_ROUTING.md`.
+This is a source-level proof of concept only. It has not yet been built or verified on hardware. The supplied Windows result for Type-C 6 in the H3 HOST position (jumper pin 1-2) is Espressif USB Serial/JTAG (`303A:1001`, COM3). The SKU 30560 schematic confirms that H3 is electrically connected to U15 SEL; pin 1-2 forces SEL LOW/channel 1, while the open selector is pulled HIGH/channel 2. The HOST label must not be interpreted as the USB role of Type-C 6. The mapping of both U15 channels to the connector signal paths and the other H3-position Windows result still need to be verified. See `docs/WAVESHARE_USB_ROUTING.md`.
 
 ## Field-level mapping and proxy routing interface
 
@@ -52,12 +52,13 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 ## Integration still pending
 
-- Verify U15 selects USB1.1 FS OTG for Type-C 6.
+- Verify U15 channel-to-signal mapping for both H3 positions on the exact board.
+- Verify Type-C 6 exposes the ESP32-P4 USB1.1 FS OTG Device path in the selected H3 state.
 - Verify simultaneous USB 2.0 HS Host on Type-A and USB 1.1 FS Device on Type-C 6.
 - USB Host stack and hub/device enumeration.
 - HID Host interface and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
-- Generic HID 1.11 parser and parser-populated mapping metadata.
+- Generic HID 1.1 parser and parser-populated mapping metadata.
 - USB Device report submission from the proxy router.
 - USB Device Output/Feature and vendor control-transfer handling.
 - JSON loading and atomic runtime configuration replacement.
