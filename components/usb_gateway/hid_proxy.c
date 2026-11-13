@@ -37,7 +37,8 @@ bool hid_proxy_route_input_report(
 		routed_payload = (uint8_t *)malloc(payload_length);
 		if (routed_payload == NULL) {
 			/* Preserve the original report if scratch allocation fails. */
-			return forward(report_id, input_payload, payload_length, context);
+			(void)forward(report_id, input_payload, payload_length, context);
+			return false;
 		}
 		used_heap = true;
 	}
