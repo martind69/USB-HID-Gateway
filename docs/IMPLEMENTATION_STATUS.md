@@ -2,6 +2,25 @@
 
 Date: 2026-11-13
 
+## USB Host enumeration diagnostic
+
+Files:
+- `components/usb_gateway/usb_host.c`
+- `components/usb_gateway/idf_component.yml`
+- `sdkconfig.defaults`
+- `docs/USB_HOST_ENUMERATION_TEST.md`
+
+Implemented at source level:
+- Added managed dependency `espressif/usb ~1.6.0` for ESP-IDF 6.1.
+- Installed the ESP-IDF USB Host Library on the default High-Speed OTG peripheral.
+- Added the Host Library daemon task and asynchronous client task.
+- Enabled single- and multi-level external hub support in `sdkconfig.defaults`.
+- Configured the HS controller for FS/LS-only operation to accommodate Full-Speed peripherals behind High-Speed hubs without Transaction Translator support.
+- Opened enumerated devices and logged VID, PID, speed and active configuration interface count.
+- Tracked device disconnects and updated the diagnostics registry.
+
+This is an enumeration-only diagnostic. It does not claim HID interfaces, retrieve HID report descriptors, submit interrupt-IN transfers or forward reports. The source has not yet been built or tested on the physical board.
+
 ## Implemented in this branch
 
 ### PC-facing USB HID enumeration proof of concept
@@ -55,7 +74,7 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 - Verify U15 channel-to-signal mapping for both H3 positions on the exact board.
 - Verify Type-C 6 exposes the ESP32-P4 USB1.1 FS OTG Device path in the selected H3 state.
 - Verify simultaneous USB 2.0 HS Host on Type-A and USB 1.1 FS Device on Type-C 6.
-- USB Host stack and hub/device enumeration.
+- HID Host interface discovery/claiming, report descriptor retrieval and interrupt-IN report reception (the Host Library enumeration diagnostic is now implemented at source level but remains unbuilt/unverified).
 - HID Host interface and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
 - Generic HID 1.1 parser and parser-populated mapping metadata.
@@ -70,7 +89,7 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 ## Build and verification
 
-The USB HID proof of concept has not been independently built in the current environment. The project owner must run the steps in `docs/USB_DEVICE_POC_TEST.md` using ESP-IDF 6.1 and the Waveshare ESP32-P4-Module-DEV-KIT.
+Neither the USB Device proof of concept nor the USB Host enumeration diagnostic has been independently built in the current environment. The project owner must run the steps in `docs/USB_DEVICE_POC_TEST.md` using ESP-IDF 6.1 and the Waveshare ESP32-P4-Module-DEV-KIT.
 
 Do not mark the USB Device milestone complete until the firmware builds, a valid PC-facing OTG Device connection is established, Windows enumerates the keyboard and mouse collections after reconnects, and the programming COM connection remains available.
 
