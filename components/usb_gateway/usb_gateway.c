@@ -14,13 +14,23 @@ static const char *TAG = "usb_gateway";
 
 void usb_gateway_init(void)
 {
+	const mapping_config_t default_mapping_config = { 0 };
+	const mapping_result_t mapping_result =
+		mapping_set_config(&default_mapping_config);
+
 	ESP_LOGI(TAG, "Initializing USB HID Gateway modules");
 
 	dac_output_init();
 	gpio_output_init();
 	hid_parser_init();
 	hotkey_init();
-	mapping_init();
+
+	if (mapping_result != MAPPING_OK) {
+		ESP_LOGE(TAG, "Failed to initialize default input mapping");
+		return;
+	}
+
+	mapping_set_event_callback(NULL, NULL);
 	hid_proxy_init();
 	usb_device_init();
 	usb_host_init();
@@ -32,7 +42,6 @@ void usb_gateway_process(void)
 	usb_device_process();
 	hotkey_process();
 	hid_proxy_process();
-	mapping_process();
 }
 
 void usb_gateway_set_mode(usb_gateway_mode_t mode)
