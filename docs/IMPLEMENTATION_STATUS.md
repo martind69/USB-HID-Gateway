@@ -20,7 +20,7 @@ Implemented:
 - Mapped Variable fields are consumed in both active and neutral/release states.
 - Empty Array slots (Usage 0) are not treated as active mappings.
 - Complete metadata validation before modifying output.
-- Fail-open forwarding of the original report if metadata is invalid or scratch allocation fails.
+- Fail-open forwarding of the original report if metadata is invalid or the report exceeds the fixed scratch-buffer capacity.
 - Synchronous semantic event callback for mapped fields.
 - Per-report copy of the mapping configuration so a callback cannot change the rules halfway through one report.
 
