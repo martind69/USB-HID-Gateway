@@ -1,191 +1,228 @@
 # USB HID Gateway – Implementation Plan
 
-Status: Planned. A milestone is complete only after its stated verification criteria pass. The current repository contains a software skeleton and design documents; no firmware build or hardware milestone is claimed as complete.
+Status: Planned. A milestone is complete only after its verification criteria pass. The repository currently contains an ESP-IDF skeleton and design/evidence documents; no firmware build or hardware milestone is claimed complete.
 
-## Principles
+## Development principles
 
-- Verify the USB hardware topology before implementing the transport.
-- Keep the HID parser independent of ESP-IDF and USB hardware.
-- Build and test in small increments.
-- Preserve raw descriptors and reports; interpret only what is needed.
-- Do not claim passthrough or G HUB compatibility until tested on the actual hardware.
-- Use bounded resources and explicit error handling.
-- Keep USB callbacks non-blocking and move parsing/routing work to task context.
-- Treat the Logitech G815 keyboard and G502 HERO mouse as the current observed test devices. The earlier G810 reference is obsolete unless a separate G810 test requirement is explicitly reintroduced.
+- Verify the exact ESP32-P4 board and USB hardware before transport implementation.
+- Keep the generic HID parser independent of ESP-IDF and device-specific protocols.
+- Preserve raw descriptors, reports and unknown fields.
+- Separate USB transport, semantic interpretation, routing policy, mapping, trajectory generation and physical I/O.
+- Treat Proxy routing as dynamic JSON configuration: mapped inputs are consumed; unmapped inputs continue to the PC unchanged.
+- G1 rising edge toggles Passthrough/Proxy; G1 release does not toggle. G1 encoding and LED command remain unverified.
+- Keep USB callbacks short and non-blocking. Use bounded queues and task-context processing.
+- Do not claim G HUB compatibility until end-to-end tests pass.
 
-## Milestone 0 – Confirm hardware and toolchain
+## Milestone 0 – Board, electrical design and toolchain
 
 Tasks:
-
 1. Identify exact ESP32-P4 development board and revision.
-2. Inspect schematic and map both USB controller instances to accessible connectors/pins.
-3. Confirm concurrent Host and Device operation for that board and ESP-IDF release.
-4. Select and record the ESP-IDF version and toolchain.
-5. Verify Host VBUS power, protection and connector wiring.
+2. Inspect schematic and map both USB controller instances to connectors/pins.
+3. Verify simultaneous Host and Device operation on the selected board and ESP-IDF release.
+4. Record ESP-IDF/toolchain versions.
+5. Verify Host VBUS source, current limit, protection and connector wiring.
+6. Define I²C bus topology, ADS7128 input signal sources, DAC7578 reference/output range and GPIO safe states.
 
 Verification:
+- Board revision, controller routing and power design are documented.
+- Minimal ESP-IDF project builds for the selected target.
+- Electrical ranges and safe output states are specified.
 
-- A checked-in hardware note identifies board revision, connector mapping and controller assignment.
-- A minimal ESP-IDF project builds for the selected target.
-- No assumption about connector/controller mapping remains unverified.
-
-## Milestone 1 – USB Device proof of concept
+## Milestone 1 – PC-facing USB Device proof of concept
 
 Tasks:
-
 1. Initialize the PC-facing USB Device controller.
 2. Expose a minimal test HID interface.
-3. Handle enumeration and basic HID class requests.
-4. Send a known test report to the PC.
+3. Handle enumeration and required standard/HID class requests.
+4. Send known test reports to the PC.
 
 Verification:
+- PC enumerates reliably across reconnects.
+- Test reports are received correctly.
 
-- PC enumerates the ESP32-P4 device reliably.
-- The test HID interface is recognized.
-- Reports are received correctly over repeated reconnects.
-
-## Milestone 2 – USB Host and hub enumeration
+## Milestone 2 – Peripheral-facing USB Host and hub enumeration
 
 Tasks:
-
 1. Initialize the independent Host controller.
 2. Enumerate a directly connected test HID device.
-3. Add hub support and enumerate the Genesys Logic hub integrated into the ASUS ROG monitor.
-4. Enumerate the G502 HERO and G815 as downstream devices on the monitor hub.
-5. Track device and interface lifecycle, including disconnect/reconnect.
+3. Add hub support and enumerate the monitor's Genesys Logic hub.
+4. Enumerate G815 and G502 as separate downstream devices.
+5. Track per-device/interface lifecycle and disconnect/reconnect.
 
 Verification:
+- Hub, G815 and G502 are identified independently.
+- G815 pass-through is not treated as a hub.
+- Required interfaces/endpoints are identified.
+- Removing one device does not corrupt another device's state.
 
-- The monitor hub, G815 and G502 are discovered as separate USB devices.
-- The G815 pass-through cable is not treated as a hub or an additional enumeration tier.
-- Every required HID interface and endpoint is identified.
-- Disconnecting one downstream device does not corrupt the state of another.
-
-## Milestone 3 – Universal HID parser
+## Milestone 3 – Generic HID 1.11 parser
 
 Tasks:
-
-1. Define opaque per-interface parser contexts, status codes and centralized capacity limits.
-2. Implement bounded HID item decoding, including short and long items.
-3. Implement global/local state and Push/Pop handling.
-4. Implement collection tracking.
-5. Calculate independent report bit offsets for Input, Output and Feature reports per Report ID.
-6. Store fields, usages, flags and report layouts.
-7. Implement checked bit-level read/write helpers and signed conversion.
-8. Add host-side unit tests and fuzz malformed descriptors.
+1. Define bounded parser contexts, capacities, errors and lifecycle.
+2. Implement short/long item decoding, global/local state, Push/Pop and collections.
+3. Calculate bit offsets independently by report type and Report ID.
+4. Support Variable/Array, signed/unsigned and cross-byte fields.
+5. Implement checked field read/write helpers.
+6. Add host-side unit tests and fuzz malformed descriptors.
 
 Verification:
+- Parser tests cover keyboard, mouse, multiple interfaces/IDs and all report types.
+- Read-modify-write preserves unrelated bits.
+- Invalid descriptors and capacity exhaustion fail deterministically.
+- Tests run without ESP-IDF or USB hardware.
 
-- Test descriptors cover mouse, keyboard, multiple Report IDs, Output/Feature reports, variable-width fields, signed values, arrays, collections and malformed input.
-- Read-modify-write tests prove unrelated bits remain unchanged.
-- Capacity exhaustion and malformed descriptors return deterministic errors.
-- Parser tests run without ESP-IDF or USB hardware.
+See [HID parser design](HID_PARSER_DESIGN.md).
 
-Detailed requirements are in [HID parser design](HID_PARSER_DESIGN.md).
-
-## Milestone 4 – Raw HID report proxy
+## Milestone 4 – Semantic layer and raw HID proxy
 
 Tasks:
-
-1. Create per-interface report queues and routing metadata.
-2. Forward supported reports unchanged from Host to Device.
-3. Preserve Report IDs and report lengths.
-4. Handle backpressure, queue overflow and disconnects.
-5. Keep report processing out of time-critical USB callbacks.
+1. Retain raw descriptor and report context per interface.
+2. Resolve descriptor fields into generic semantic input events.
+3. Create bounded per-interface queues and routing metadata.
+4. Forward supported reports unchanged in Passthrough.
+5. Handle queue backpressure, overflow and disconnect.
+6. Preserve Output/Feature/control-transfer context where supported.
 
 Verification:
+- Passthrough ingress/egress reports match.
+- No unbounded memory growth.
+- Unknown fields and report IDs remain intact.
 
-- Captured reports match at ingress and egress in passthrough mode.
-- Sustained input does not cause unbounded memory growth.
-- Queue overflow and device removal are handled deterministically.
-
-## Milestone 5 – PC-facing descriptors and compatibility
+## Milestone 5 – PC-facing descriptor strategy and vendor compatibility
 
 Tasks:
-
-1. Select the PC-facing HID interface/composite-device strategy.
-2. Expose compatible keyboard and mouse report descriptors.
-3. Implement required standard and HID class control requests.
-4. Identify and implement required vendor-specific transactions.
-5. Validate G HUB operation with the actual G815/G502 setup.
+1. Select composite keyboard/mouse descriptor and identity strategy.
+2. Expose compatible report descriptors and endpoints.
+3. Implement required standard and HID class requests.
+4. Capture and classify G815/G502 vendor-specific and Feature traffic.
+5. Implement only evidenced transactions needed by the supported feature set.
 
 Verification:
+- PC recognizes keyboard and mouse functions.
+- Required G HUB functions are demonstrated on actual hardware.
+- Unsupported transactions and limitations are documented.
 
-- PC recognizes keyboard and mouse interfaces.
-- Keyboard and mouse functions work through the gateway.
-- Required G HUB functions are demonstrated, not assumed.
-- Unsupported vendor-specific behavior is documented.
-
-## Milestone 6 – Hotkey mode and mouse report modification
+## Milestone 6 – Gateway mode and dynamic report routing
 
 Tasks:
-
-1. Implement configurable hotkey detection from parsed keyboard reports.
-2. Ensure hotkey detection does not suppress normal keyboard forwarding.
-3. Add mode-dependent mouse report routing.
-4. Retain physical X/Y values internally.
-5. Replace only X/Y fields with synthetic/jitter values in hotkey mode.
-6. Continue forwarding buttons, wheel and unrelated report bits.
+1. Implement GatewayModeController with Passthrough default.
+2. Add G1 rising-edge toggle through an abstract input interface.
+3. Add G1 LED feedback abstraction; bind it only after capture verifies the command.
+4. Implement consume-if-mapped, otherwise-forward routing.
+5. Support field-level routing for mixed reports without dropping unrelated keys/buttons.
+6. Implement safe mode transition and disconnect cleanup.
 
 Verification:
+- G1 toggles exactly once per press; release does not toggle.
+- Mapped events are consumed.
+- Unmapped events reach the PC normally.
+- Mixed reports preserve all unmapped fields.
+- No held key/button/output survives mode transitions.
 
-- Passthrough mode forwards mouse reports unchanged.
-- Hotkey mode changes only the intended X/Y fields.
-- Physical X/Y remains available internally.
-- Button and wheel operation remains correct.
-- Mode transitions do not leave stuck keys or buttons.
-
-## Milestone 7 – DAC and GPIO mapping
+## Milestone 7 – JSON configuration and input mapping
 
 Tasks:
-
-1. Select the external SPI DAC and document electrical requirements.
-2. Implement 4–6 analog output channels.
-3. Assign and configure 12 digital GPIO outputs.
-4. Define mapping configuration, scaling, limits and update rates.
-5. Add safe initialization and output states.
+1. Define versioned gateway and input-mapping JSON formats.
+2. Implement validation and immutable active configuration snapshots.
+3. Implement WASD to left XY target.
+4. Implement relative mouse X/Y shaping to right XY target.
+5. Implement up to 12 digital output actions.
+6. Add safe runtime reload without recompilation.
 
 Verification:
+- Invalid or conflicting mappings are rejected.
+- Mapping changes activate atomically.
+- WASD, mouse and digital actions pass deterministic unit tests.
+- Unmapped events continue to the PC.
 
-- Each output is independently addressable.
-- Analog values and digital states match the configured mapping.
-- Invalid channel/output indices are rejected.
-- Startup, reset and fault behavior are safe and deterministic.
-
-## Milestone 8 – Integration and robustness
+## Milestone 8 – AnalogVectorIO and physical outputs
 
 Tasks:
-
-1. Run simultaneous Host and Device traffic.
-2. Test keyboard, mouse, hotkey and outputs together.
-3. Exercise disconnect/reconnect and malformed report conditions.
-4. Measure latency, queue usage, CPU load and memory usage.
-5. Document known limitations and validated peripheral combinations.
+1. Implement ADS7128 I²C backend.
+2. Implement DAC7578 I²C backend.
+3. Implement calibration, normalization, deadzone and radial envelope in AnalogVectorIO.
+4. Map four DAC channels to left/right XY.
+5. Implement 12 logical DigitalIO outputs with polarity and safe states.
 
 Verification:
+- ADC scan timing and skew are measured.
+- DAC output range and neutral calibration are verified.
+- All logical outputs are independently controllable.
+- I²C failure and reset states are safe.
 
-- No data corruption under sustained operation.
+## Milestone 9 – Motion estimation and manual learning
+
+Tasks:
+1. Implement timestamp-aware KinematicEstimator2D.
+2. Filter sensor observations before differentiation.
+3. Implement manually started/stopped ContinuousMotionLearner.
+4. Calculate robust statistics and confidence per model cell.
+5. Serialize immutable LearnedMotionModel data.
+
+Verification:
+- No learning occurs unless explicitly started.
+- Stopping learning freezes the raw model.
+- Noise, jitter, sparse samples and invalid data are handled deterministically.
+
+## Milestone 10 – Fine-tuning and HumanMotionModel
+
+Tasks:
+1. Implement separate tuning parameters and optional overrides.
+2. Validate effective parameter ranges.
+3. Combine raw model and tuning into an immutable effective snapshot.
+4. Implement versioned save/load and backup/restore.
+
+Verification:
+- Tuning never modifies raw learning data.
+- Invalid tuning is rejected.
+- Save/load round trips preserve values and metadata.
+
+## Milestone 11 – HumanTrajectoryGenerator
+
+Tasks:
+1. Select a jerk-limited online XY trajectory algorithm.
+2. Preserve position, velocity and acceleration across target updates.
+3. Handle reversal, braking, return-to-center and target hold.
+4. Bound computation time and define behavior for infeasible target changes.
+5. Integrate two independent XY instances with AnalogVectorIO.
+
+Verification:
+- Position/velocity/acceleration continuity tests pass.
+- Jerk limits hold under target changes and reversal.
+- Runtime meets the selected update budget on ESP32-P4.
+
+## Milestone 12 – System integration and robustness
+
+Tasks:
+1. Run simultaneous USB Host/Device traffic.
+2. Test G815/G502, G1 mode control, mappings and outputs together.
+3. Test G HUB control/Feature/vendor traffic.
+4. Exercise disconnect/reconnect, queue saturation, I²C errors and malformed reports.
+5. Measure latency, CPU, RAM, queue high-water marks and storage behavior.
+6. Document exact supported device/firmware/software combinations.
+
+Verification:
+- No report corruption under sustained load.
+- No stuck input/output state.
 - No unbounded resource growth.
-- Recovery from expected disconnect and error cases is demonstrated.
-- All claimed compatibility is backed by repeatable tests.
+- Compatibility claims are backed by repeatable evidence.
 
 ## Current repository status
 
 | Area | Status |
 |---|---|
 | ESP-IDF project skeleton | Present |
-| Module separation | Present |
-| Project requirements | Documented |
-| Physical peripheral topology | Documented; ESP32-P4 board routing open |
-| G815 RGB/profile protocol | Partially reverse-engineered; see hardware protocol document |
-| G502 DPI/profile/lighting protocol | Partially reverse-engineered; see hardware protocol document |
-| G502 mouse Input report payloads | Capture/analysis pending |
-| Raw HID report descriptor bytes | Retrieval pending; current enumeration document records Windows descriptor lengths and capability data |
-| HID parser design | Documented; implementation pending |
-| USB Host | Placeholder |
-| USB Device | Placeholder |
-| HID proxy | Placeholder |
-| Hotkey detection | Mode state only; detection pending |
-| Mapping / DAC / GPIO | Placeholders |
+| USB topology and device evidence | Documented |
+| G815 RGB/profile protocol | Partially reverse-engineered |
+| G502 DPI/profile/lighting protocol | Partially reverse-engineered |
+| Raw HID descriptors | Retrieval pending |
+| G815/G502 Input report captures | Pending |
+| Generic HID parser design | Documented; implementation pending |
+| USB Host/Device | Placeholder |
+| Semantic layer and report router | Design only |
+| G1 input/LED protocol | Unverified |
+| JSON mapping | Design only |
+| ADS7128/DAC7578 hardware | Design baseline; electrical validation pending |
+| Motion learner/model/trajectory | Design only |
 | Firmware build | Not verified |
 | Hardware validation | Not started |

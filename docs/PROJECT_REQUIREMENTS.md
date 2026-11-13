@@ -1,162 +1,150 @@
 # USB HID Gateway – Project Requirements
 
-Status: Requirements baseline. Items marked **Open** require a hardware or design decision; they must not be treated as implemented.
+Status: Architecture baseline, 2026-11-12. Requirements are not implementation claims. Items marked **Open** require further evidence or a hardware decision.
 
-## 1. Objective
+## 1. Objective and scope
 
-Build an ESP32-P4-based USB gateway between a PC and USB HID peripherals. The gateway has two independent USB roles:
+Build an ESP32-P4-based USB HID gateway with independent PC-facing USB Device and peripheral-facing USB Host roles. The initial target peripherals are:
 
-- PC-facing USB Device.
-- Peripheral-facing USB Host.
+- Logitech G815 DE keyboard, VID:PID `046D:C33F`
+- Logitech G502 HERO mouse, VID:PID `046D:C08B`
 
-Normal operation should behave as a transparent HID passthrough wherever the USB topology, descriptors, endpoint behavior and control requests permit it. A second operating mode allows selected mouse report data to be modified while retaining the original physical input internally.
-
-The first target setup is:
-
-- Logitech G815 keyboard.
-- Logitech G502 mouse connected through the G815 USB pass-through connection.
-- Both USB connections terminate at separate downstream ports of the USB hub integrated into the ASUS ROG monitor.
-- PC connected to the USB Device side of the gateway.
-
-The G815 pass-through is not a hub. The monitor's Genesys Logic hub is the actual downstream hub that the ESP32-P4 Host must enumerate.
-
-This is a target configuration, not a claim that Logitech G HUB compatibility has already been achieved.
+The gateway is intended to process selected HID input events while preserving ordinary PC input for anything not explicitly mapped. It is not a conventional USB hub and is not assumed to provide transaction-level transparency for arbitrary USB devices.
 
 ## 2. Operating modes
 
-### 2.1 Passthrough mode
+### 2.1 Passthrough
 
-- Forward supported keyboard and mouse HID reports from Host to Device.
-- Preserve report IDs, report lengths and all report bits that are not intentionally modified.
-- Preserve keyboard functionality and, where technically possible, Logitech G HUB functionality.
-- Do not apply synthetic mouse movement in this mode.
-- Unknown report fields must not be discarded merely because the firmware does not interpret them.
+- Default mode after power-up and reset.
+- Forward supported keyboard and mouse Input reports to the PC without semantic modification.
+- Preserve report IDs, report lengths and all bits not explicitly modified.
+- Preserve unknown report fields.
+- Forward relevant Output, Feature, class and vendor-specific traffic where the implemented USB architecture supports it.
+- Do not claim full Logitech G HUB compatibility until validated end-to-end.
 
-### 2.2 Hotkey mode
+### 2.2 Proxy
 
-- Detect a configurable keyboard hotkey and change the gateway operating mode.
-- Continue forwarding keyboard reports so normal keyboard operation is retained.
-- Continue forwarding mouse buttons and wheel unless a later explicit mapping rule says otherwise.
-- Retain the physical mouse X/Y values internally.
-- Send the configured synthetic/jitter X/Y values to the PC instead of the physical X/Y values.
-- Modify only the intended X/Y bit fields; preserve all other report bits.
+- Apply the active JSON mapping configuration to eligible input events.
+- A mapped input is consumed by default: it is processed by the gateway and is not forwarded as its ordinary PC input.
+- An input that has no active mapping is forwarded to the PC normally and unchanged.
+- Mapping is dynamic; changing the JSON configuration must not require recompiling firmware.
+- A single input may have an explicitly defined routing policy in configuration if a future requirement needs simultaneous processing and forwarding. The initial default remains consume-if-mapped, otherwise forward.
+- Physical mouse X/Y values remain available to the gateway for mapping and motion processing.
+- Only the report fields required by the selected routing policy may be modified. Unrelated fields, buttons, wheel, pan, vendor fields and padding must be preserved.
 
-The exact hotkey combination, synthetic movement algorithm, amplitude, timing and activation feedback are **Open**.
+### 2.3 Mode control: G815 G1
 
-## 3. HID handling
+- The G1 key is the global mode-control input. M1 is not the mode hotkey.
+- Power-up mode is Passthrough.
+- A G1 rising edge toggles Passthrough ↔ Proxy.
+- G1 release does not cause a second transition.
+- G1 is handled by GatewayModeController before ordinary mapping and is reserved from the normal InputMappingEngine.
+- G1 is not mapped to a digital output by default.
+- Intended feedback: G1 LED off in Passthrough, on in Proxy.
+- Exact G1 Input encoding and G1 LED Output command are **Open** pending controlled capture and verification. No guessed Usage ID or vendor command may be used.
 
-- Parse HID report descriptors dynamically; do not hard-code the G815 or G502 report layout.
-- Support multiple HID interfaces per USB device.
-- Support multiple Report IDs and Input, Output and Feature reports.
-- Handle variable-width and signed fields, fields crossing byte boundaries, usage ranges, collections and nested global state.
-- Preserve original descriptor bytes.
-- Keep descriptor parsing, semantic interpretation, report modification and USB transport as separate responsibilities.
-- Forward reports unchanged when no modification is required.
-- Preserve unknown fields and report bits during selective modifications.
-- Use bounded resources and report explicit parser errors; never silently continue with a truncated descriptor model.
+## 3. Input mapping
 
-See [HID parser design](HID_PARSER_DESIGN.md) for the detailed parser specification.
+The mapping engine consumes semantic HID events resolved from parsed descriptors. It must not depend on localized key labels or fixed report byte offsets.
 
-## 4. USB behavior and compatibility
+Initial logical mappings:
 
-- Use independent ESP32-P4 USB controller instances for Host and Device roles.
-- Host side must enumerate the monitor's Genesys Logic hub and its downstream devices.
-- The G815 pass-through must not be modeled as an additional hub or USB tier.
-- The ASUS ROG monitor Aura function is a separate vendor-defined HID device on the same hub; enumerate and isolate it from the Logitech keyboard/mouse report path.
-- Device side must expose a PC-compatible HID interface configuration and handle the required enumeration and control-transfer behavior.
-- The PC-facing descriptor/interface strategy must be compatible with the downstream devices' reports.
-- A report parser alone does not provide transparent USB forwarding. Device identity, interface topology, endpoint characteristics, class requests and vendor-specific control transfers must be considered separately.
-- Logitech G HUB uses functionality beyond ordinary generic mouse/keyboard input in some configurations. Its vendor-specific reports and control requests must be captured and validated on the actual hardware; compatibility must not be assumed.
+- Keyboard W/A/S/D to a normalized left-stick XY target.
+- Relative mouse X/Y to a normalized right-stick XY target.
+- Configurable keyboard keys and mouse buttons to up to 12 logical digital outputs.
 
-Exact ESP-IDF version, board revision, connector routing, endpoint limits and descriptor strategy are **Open**.
+Keyboard vector:
 
-## 5. Output mapping
+`x = D - A`, `y = W - S`
 
-The gateway is intended to expose:
+Normalize diagonals so the vector magnitude does not exceed 1. Opposing directions cancel. Key release must update the target immediately without creating a stuck state.
 
-- 4–6 analog output channels using an external SPI DAC.
-- 12 digital GPIO outputs.
+Mouse mapping must define separate X/Y sensitivity, inversion, deadband, gamma response, radial limiting, inactivity timeout and return-to-center behavior. Relative deltas must be converted into a bounded target or integrated position according to the selected mapping configuration; they must not be mistaken for absolute coordinates.
 
-The mapping layer converts selected HID input values/events into logical output values. Mapping configuration, scaling, ranges, update rates, DAC part number, DAC resolution, output voltage range and GPIO pin assignment are **Open**.
+Digital actions include Momentary, Toggle, Pulse, Set and Reset. Per-mapping configuration includes source, semantic input code, output channel, active polarity, debounce and pulse duration where applicable.
 
-## 6. Software and development constraints
+## 4. Motion and analog I/O
 
-- Target MCU: ESP32-P4.
+The motion system treats each joystick as one two-dimensional vector. X and Y must not be planned as unrelated axes.
+
+- Input mapping produces targets, not time trajectories.
+- HumanTrajectoryGenerator generates continuous XY motion from the current state to a target.
+- Position, velocity and acceleration must remain continuous across target changes; jerk must be bounded by the effective motion model.
+- ContinuousMotionLearner runs only after explicit user initiation and stops on explicit request.
+- LearnedMotionModel is immutable raw learning output.
+- MotionModelTuner produces a separate effective HumanMotionModel without altering raw learning data.
+
+Current hardware design baseline:
+
+- ADC: ADS7128, I²C
+- DAC: DAC7578, I²C
+- Two XY systems, four DAC output channels total
+- Twelve logical digital outputs
+
+Part selection is the current design baseline, not proof of assembled or electrically validated hardware. ADC channel assignment, voltage ranges, reference, calibration circuit, DAC output scaling, neutral values and GPIO pin allocation remain **Open**.
+
+## 5. USB/HID requirements
+
+- Parse HID 1.11 report descriptors generically and independently of Logitech-specific logic.
+- Support multiple HID interfaces and Report IDs.
+- Support Input, Output and Feature reports, Variable and Array items, signed/unsigned fields, arbitrary bit widths, fields crossing byte boundaries, collection hierarchy and Push/Pop.
+- Preserve raw descriptor bytes and unknown report bits.
+- Keep parsing, semantic interpretation, routing policy, report modification and USB transport separate.
+- USB callbacks must remain short and non-blocking; use bounded queues for task-context processing.
+- Distinguish generic HID report forwarding from complete USB transaction proxying.
+- Treat vendor-specific G HUB traffic as a separate compatibility requirement.
+
+## 6. Hardware and development
+
+- MCU: ESP32-P4.
 - Framework: ESP-IDF, C and FreeRTOS.
-- Development environment: VS Code with Espressif ESP-IDF extension.
-- Keep modules separated by responsibility.
-- USB callbacks must remain short and non-blocking; queue work for task context.
-- Parse descriptors in task context during enumeration, not in time-critical USB callbacks.
-- Prefer bounded queues and explicit capacity/error handling.
-- Keep the parser independently testable on a host computer without ESP-IDF or USB hardware.
-- Source formatting: tabs for indentation, tab width 4; comments in English.
+- IDE: VS Code with Espressif ESP-IDF extension.
+- Host and Device roles must use independent controller instances if supported by the selected board and ESP-IDF release.
+- Source indentation: tabs, tab width 4. Source comments: English.
+- Exact board, board revision, ESP-IDF version, USB routing, PHY and Host VBUS design are **Open**.
 
-The exact ESP-IDF release and compiler/toolchain version are **Open**.
+## 7. Safety and fault handling
 
-## 7. Target hardware and validation
+- Startup mode is Passthrough.
+- Mode changes must clear mapping state, cancel active trajectories and place analog/digital outputs in configured safe states before enabling the new mode.
+- Safe analog neutral values and digital output levels must be hardware-configured; do not assume DAC midscale or GPIO low is universally safe.
+- Invalid JSON, unsupported schema versions, invalid mappings and resource exhaustion must fail safely and be reported.
+- No stale key, button, toggle, pulse or trajectory state may survive a mode transition or device disconnect.
 
-The initial validation hardware is the G815/G502 combination connected through the monitor hub as described above. Tests must cover:
+## 8. Validation requirements
 
-- Enumeration of the monitor's Genesys Logic hub.
-- Enumeration of the G815 and G502 on separate monitor hub ports, including the G502 connection through the G815 pass-through cable.
-- Enumeration and isolation of the monitor's ASUS Aura HID function.
-- PC-side enumeration of the gateway.
-- Keyboard and mouse passthrough.
-- Report IDs and multiple HID interfaces.
-- Hotkey mode switching.
-- Physical mouse X/Y capture while synthetic X/Y is sent to the PC.
-- Button and wheel forwarding during hotkey mode.
-- G HUB behavior, including vendor-specific traffic.
-- DAC and GPIO output mapping.
+- Host and Device enumeration and simultaneous operation on the selected board.
+- Descriptor-driven enumeration of the monitor hub, G815 and G502.
+- Generic parser unit tests and malformed-descriptor fuzzing.
+- Passthrough report equality tests.
+- Proxy routing tests for mapped/consumed and unmapped/forwarded inputs.
+- G1 rising-edge toggle and LED feedback tests after protocol capture.
+- G HUB vendor traffic and control-transfer compatibility tests.
+- Mapping JSON validation and reload tests.
+- XY trajectory continuity and jerk-limit tests.
+- ADC/DAC calibration, timing, output-range and fault tests.
+- Digital output action, polarity, debounce and pulse tests.
 
-No compatibility or performance target is considered met until it has been tested on the actual board and peripherals.
+## 9. Open decisions and evidence gaps
 
-## 8. Explicit non-goals for the initial milestone
+1. Exact ESP32-P4 board and revision; simultaneous Host/Device connector routing.
+2. ESP-IDF version and USB stack capabilities.
+3. PC-facing composite HID descriptor and device identity strategy.
+4. Raw HID report descriptor bytes for required physical interfaces.
+5. Full G815 Input reports, including G1 key encoding and G1 LED command.
+6. Full G502 mouse Input reports, including buttons, X/Y, wheel and pan.
+7. Complete G HUB vendor/control/Feature transaction requirements.
+8. ADC signal source, electrical range, calibration and sampling requirements.
+9. DAC reference, output range, analog neutral calibration and output load.
+10. Digital GPIO pin assignment and per-output safe state.
+11. Exact JSON schema fields and runtime reload mechanism.
+12. FreeRTOS task, queue and synchronization design.
+13. HumanTrajectoryGenerator algorithm and computational budget.
 
-- Full USB proxy support for arbitrary non-HID devices.
-- Guaranteed support for every vendor-specific peripheral protocol.
-- Reconstructing all downstream USB descriptors from a normalized HID model.
-- Implementing a complete Logitech configuration-software emulator.
+## 10. Observed hardware evidence
 
-## 9. Open decisions
+The ASUS ROG monitor contains a four-port Genesys Logic hub (`05E3:0610`). G815 and G502 appear as sibling devices on this hub. The G502 is physically connected through the G815 USB pass-through cable, which is a direct cable path and not another hub.
 
-1. Exact ESP32-P4 board and hardware revision.
-2. Physical connector and USB controller mapping for Host and Device.
-3. ESP-IDF version.
-4. PC-facing USB descriptor and composite-interface strategy.
-5. Hotkey combination and mode feedback.
-6. Synthetic mouse movement algorithm and timing.
-7. External DAC part, resolution and analog output requirements.
-8. GPIO pin allocation and electrical characteristics.
-9. Required G HUB features and the vendor-specific transactions they use.
+The G502 exposes a boot mouse interface and a vendor/non-boot interface. Windows HID capabilities report up to 16 buttons, signed relative 16-bit X/Y, signed relative 8-bit wheel and AC Pan. The G815 exposes boot and non-boot/vendor interfaces. Both devices operate at Full-Speed with 1 ms polling in the observed setup.
 
-
-## 10. Observed peripheral enumeration (2026-11-09)
-
-A complete Windows USB device-tree/HID capability capture is available for the monitor hub, its ASUS Aura HID function, the Logitech G502 HERO and the Logitech G815:
-
-- Logitech G502 HERO: `VID:PID 046D:C08B`, revision `0x2703`.
-- Logitech G815: `VID:PID 046D:C33F`, revision `0x3102`.
-
-The monitor contains a four-port Genesys Logic USB hub (`05E3:0610`), with a paired SuperSpeed companion hub (`05E3:0620`). The G502 and G815 were enumerated at Full-Speed on sibling port chains (`2-7-3` and `2-7-4`). This is consistent with the G502 being connected through the G815 pass-through: the pass-through is a cable path, not a hub, and therefore creates no additional USB hub tier. The ASUS Aura HID function is on port `2-7-1`; port `2-7-2` is empty.
-
-The G502 mouse collection reports 16 buttons, signed relative 16-bit X/Y, and signed 8-bit wheel and AC Pan fields. Both Logitech devices expose vendor-defined HID report collections. The monitor's ASUS Aura function is a separate vendor-defined HID interface with 64-byte interrupt IN and OUT endpoints.
-
-Raw HID report descriptor bytes and actual report/control-transfer payloads were not captured. The G815 is the observed keyboard; the former G810 target label must not be used for this hardware capture.
-
-See [USB device enumeration](hardware/USB_DEVICE_ENUMERATION.md) for the detailed tables, limitations and follow-up capture checklist. These observations do not establish G HUB compatibility.
-
-
-## 11. Observed G815 RGB and profile-control behavior (2026-11-12)
-
-USBPcap captures confirm that G815 Output reports are sent as HID class `SET_REPORT` control transfers on interface 1, EP0, using Report ID `0x11` and a 20-byte payload. A representative setup packet uses `bmRequestType=0x21`, `bRequest=0x09`, `wValue=0x0211`, `wIndex=1` and `wLength=20`.
-
-For the observed `11 FF 10 6E` RGB report variant, offsets 4, 5 and 6 contain independent 8-bit Red, Green and Blue values. This has been confirmed by changing individual color channels.
-
-The G815 lighting configuration also has a global/default color (observed by the user as RGB(0,255,255), applied to all keys) and individually configurable keys: W, S, A, D, E, R, F, Ctrl, Alt, Shift, Space and G1–G5.
-
-Profile changes, RGB-off operations and per-key addressing are distinct actions. In the user's latest capture interpretation, frame group 55xx represents RGB off and is not a profile change; group 2xxx contains a profile change among other configuration traffic; group 6xxx contains targeted key-addressing traffic; group 8xxx switches back to the Desktop/default profile.
-
-The complete report layouts and semantics of all observed subtypes remain partially unknown. In particular, do not assume that every `10 6E` report is a simple RGB triplet or modify offsets 4–6 without positively classifying the report variant.
-
-See [G815 RGB and profile control findings](hardware/LOGITECH_G815_RGB_PROTOCOL.md) for captured payloads, confidence levels and implementation constraints. These captures establish specific G815 behavior but do not establish complete G HUB compatibility.
+Selected G815 RGB/profile and G502 DPI/profile/lighting Output transactions have been captured. Their exact evidence and limitations remain in the device-specific protocol documents. These observations do not establish complete G HUB compatibility.

@@ -1,1 +1,6 @@
 CONFIG_IDF_TARGET="esp32p4"
+CONFIG_TINYUSB_HID_COUNT=1
+
+# Enable external USB hub support for the Type-A host topology.
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
+CONFIG_USB_HOST_HUB_MULTI_LEVEL=y
