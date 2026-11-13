@@ -32,7 +32,7 @@ The current development board is the Waveshare ESP32-P4-Module-DEV-KIT. Type-C 4
 
 ## Current implementation status
 
-The repository is primarily an architecture and evidence baseline. A first PC-facing USB HID enumeration proof of concept has now been added using Espressif's TinyUSB-based `esp_tinyusb` component. It exposes keyboard and mouse HID collections but intentionally sends no input reports. The source has not yet been built or verified on hardware. The firmware now selects the FS OTG controller for Type-C 6; U15 mux selection and simultaneous HS Host + FS Device operation remain to be verified on hardware. USB Host transport, the generic parser, report forwarding, motion algorithms and physical output drivers remain planned or skeletal. See [Firmware implementation status](docs/IMPLEMENTATION_STATUS.md) and [USB Device PoC test procedure](docs/USB_DEVICE_POC_TEST.md).
+The repository is primarily an architecture and evidence baseline. A first PC-facing USB HID enumeration proof of concept has now been added using Espressif's TinyUSB-based `esp_tinyusb` component. It exposes keyboard and mouse HID collections but intentionally sends no input reports. The source has not yet been built or verified on hardware. The firmware now selects the FS OTG controller for Type-C 6; U15 mux selection and simultaneous HS Host + FS Device operation remain to be verified on hardware. A first ESP-IDF USB Host enumeration diagnostic is now implemented at source level: it starts the Host Library, enables hub support, and logs VID/PID, speed and configuration information. It has not yet been built or verified on hardware. HID Host reports, report forwarding, motion algorithms and physical output drivers remain pending. See [Firmware implementation status](docs/IMPLEMENTATION_STATUS.md) and [USB Device PoC test procedure](docs/USB_DEVICE_POC_TEST.md).
 
 Runtime diagnostics provide a five-second serial summary, a bounded USB-device registry, proxy counters, I2C health reporting hooks, heap and uptime information. Real USB enumeration, HID parsing, proxy traffic and I2C health reporting require the corresponding hardware drivers to be connected. See [Runtime diagnostics](docs/RUNTIME_DIAGNOSTICS.md).
 
@@ -53,6 +53,7 @@ Runtime diagnostics provide a five-second serial summary, a bounded USB-device r
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Input mapping and report-routing interface](docs/INPUT_MAPPING_ROUTING.md)
 - [PC-facing USB HID proof of concept](docs/USB_DEVICE_POC_TEST.md)
+- [USB Host enumeration test](docs/USB_HOST_ENUMERATION_TEST.md)
 
 ### USB/HID evidence and design
 - [USB topology](docs/USB_TOPOLOGY.md)
