@@ -37,7 +37,7 @@ void usb_gateway_init(void)
 	hid_proxy_init();
 	usb_device_init();
 	usb_host_init();
-	diagnostics_set_proxy_state(DIAG_STATE_READY, 0);
+	diagnostics_set_proxy_state(DIAG_STATE_UNAVAILABLE, 0);
 }
 
 void usb_gateway_process(void)
