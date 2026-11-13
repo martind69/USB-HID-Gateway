@@ -10,19 +10,23 @@ Files:
 - `components/usb_gateway/usb_device.c`
 - `components/usb_gateway/idf_component.yml`
 - `docs/USB_DEVICE_POC_TEST.md`
+- `docs/WAVESHARE_USB_ROUTING.md`
 
 Implemented:
 - Added Espressif `esp_tinyusb` managed dependency.
 - Initialized the ESP32-P4 USB Device stack through TinyUSB.
+- Explicitly selected the ESP32-P4 High-Speed OTG port.
 - Added one HID interface containing keyboard and mouse top-level collections.
 - Added Full-Speed and High-Speed configuration descriptors.
 - Added HID report descriptor and class request callbacks.
 - Added mount/detach state reporting to runtime diagnostics.
 - Deliberately sends no synthetic key or mouse input during enumeration testing.
 
-This is a source-level proof of concept only. It has not yet been built or verified on the board. The first acceptance target is stable Windows enumeration and successful retrieval of both HID collections. It does not implement report forwarding.
+This is a source-level proof of concept only. It has not yet been built or verified on hardware. The supplied Windows reports identify Type-C 4 as the CH343P UART bridge (`1A86:55D3`) and Type-C 6 as the fixed-function USB Serial/JTAG controller (`303A:1001`). Neither is the programmable OTG HID connection.
 
-### Field-level mapping and proxy routing interface
+Waveshare documents the four Type-A sockets as one direct P4 OTG port plus three ports behind the CH334 hub, selected by H3. The current documentation does not identify a separate standards-compliant PC-facing OTG Device connector for simultaneous use with peripheral-facing USB Host. This is now a hardware integration blocker, not evidence of a HID descriptor failure. See `docs/WAVESHARE_USB_ROUTING.md`.
+
+## Field-level mapping and proxy routing interface
 
 Files:
 - `components/usb_gateway/mapping.h`
@@ -50,8 +54,9 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 ## Integration still pending
 
+- Establish a standards-compliant physical PC-facing USB Device path alongside peripheral-facing USB Host.
+- Verify simultaneous Host and Device operation on the selected board or select suitable replacement hardware.
 - USB Host stack and hub/device enumeration.
-- Simultaneous USB Host and USB Device operation on the selected Waveshare board.
 - HID Host interface and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
 - Generic HID 1.11 parser and parser-populated mapping metadata.
@@ -68,6 +73,6 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 The USB HID proof of concept has not been independently built in the current environment. The project owner must run the steps in `docs/USB_DEVICE_POC_TEST.md` using ESP-IDF 6.1 and the Waveshare ESP32-P4-Module-DEV-KIT.
 
-Do not mark the USB Device milestone complete until the firmware builds, Windows enumerates the keyboard and mouse collections after reconnects, and the programming COM connection remains available.
+Do not mark the USB Device milestone complete until the firmware builds, a valid PC-facing OTG Device connection is established, Windows enumerates the keyboard and mouse collections after reconnects, and the programming COM connection remains available.
 
 No end-to-end USB Host-to-Device passthrough or G HUB compatibility is claimed.
