@@ -59,25 +59,6 @@ static const uint8_t s_hid_config_fs[] = {
 	)
 };
 
-static const uint8_t s_hid_config_hs[] = {
-	TUD_CONFIG_DESCRIPTOR(
-		1,
-		1,
-		0,
-		USB_HID_CONFIG_DESC_LEN,
-		TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP,
-		100
-	),
-	TUD_HID_DESCRIPTOR(
-		0,
-		4,
-		false,
-		sizeof(s_hid_report_descriptor),
-		0x81,
-		64,
-		4
-	)
-};
 
 static void usb_device_event_handler(tinyusb_event_t *event, void *context)
 {
