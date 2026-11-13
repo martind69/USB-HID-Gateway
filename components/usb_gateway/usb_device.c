@@ -141,6 +141,9 @@ void usb_device_init(void)
 	tinyusb_config_t config = TINYUSB_DEFAULT_CONFIG(usb_device_event_handler);
 	esp_err_t result;
 
+	/* ESP32-P4 exposes its programmable OTG device controller on the HS port. */
+	config.port = TINYUSB_PORT_HIGH_SPEED_0;
+
 	config.descriptor.device = NULL;
 	config.descriptor.string = s_hid_string_descriptor;
 	config.descriptor.string_count =
@@ -151,7 +154,7 @@ void usb_device_init(void)
 	config.descriptor.high_speed_config = s_hid_config_hs;
 #endif
 
-	ESP_LOGI(TAG, "Installing PC-facing TinyUSB HID device stack");
+	ESP_LOGI(TAG, "Installing TinyUSB HID device stack on USB High-Speed OTG port");
 	result = tinyusb_driver_install(&config);
 	if (result != ESP_OK) {
 		ESP_LOGE(TAG, "TinyUSB device installation failed: %s",
