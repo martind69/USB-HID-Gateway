@@ -2,26 +2,31 @@
 
 ## Scope
 
-The first USB Device milestone exposes one HID interface with two top-level
-collections: a keyboard and a mouse. It does not generate synthetic key or
-mouse input. The test is limited to USB enumeration and descriptor retrieval.
+The first USB Device milestone exposes one HID interface with two top-level collections: a keyboard and a mouse. It does not generate synthetic key or mouse input. The test is limited to USB enumeration and descriptor retrieval.
 
-The device stack uses Espressif's `esp_tinyusb` component (TinyUSB-based).
-On this Waveshare board, the Type-C UART/programming connector uses the onboard CH343P USB-to-UART bridge. Its COM port is separate from the PC-facing OTG HID connection.
+The device stack uses Espressif's `esp_tinyusb` component (TinyUSB-based). On ESP32-P4 the PoC explicitly selects the High-Speed OTG port.
+
+## Important board-routing finding
+
+The Waveshare ESP32-P4-Module-DEV-KIT has three distinct physical USB paths:
+
+- Type-C 4: onboard CH343P USB-to-UART bridge (WCH VID:PID `1A86:55D3`).
+- Type-C 6: fixed-function ESP32-P4 USB Serial/JTAG (Espressif VID:PID `303A:1001`). It cannot be used as a programmable HID device.
+- Four Type-A sockets: the P4 USB OTG path; one socket is direct and three are behind the CH334 hub. H3 selects the Type-A path: HOST enables port 1; DEVICE enables ports 2–4, according to Waveshare's FAQ.
+
+Therefore, do not connect Type-C 6 expecting the TinyUSB HID descriptor. Its appearance as `303A:1001` is expected. The board documentation does not identify a separate, standards-compliant PC-facing OTG Device connector while the Type-A group is being used for peripheral-facing Host operation.
+
+See [Waveshare USB routing assessment](WAVESHARE_USB_ROUTING.md) before performing hardware tests.
 
 ## Board setup
 
 Target board: Waveshare ESP32-P4-Module-DEV-KIT.
 
-- Keep the Type-C UART/programming connection attached for flashing and logs.
-- Connect the board's USB OTG connection to the PC using the board's documented
-  OTG path.
-- Set jumper H3 to DEVICE before connecting the OTG cable.
-- Do not connect a USB peripheral to the OTG connector while it is configured
-  as a PC-facing device.
-- The Type-A OTG connector is switched between HOST and DEVICE by the board
-  jumper arrangement. Verify the silkscreen position against the board
-  revision before applying power.
+- Keep Type-C 4 attached for UART logging and flashing.
+- Type-C 6 may remain attached for USB Serial/JTAG; it is not the HID test connection.
+- H3 selects the Type-A OTG path as described above.
+- Do not use a Type-A-to-Type-A cable to connect the Type-A sockets to the PC.
+- Do not assume H3 changes the TinyUSB software role or turns Type-C 6 into a HID port.
 
 ## Build and flash
 
@@ -34,33 +39,27 @@ idf.py -p COMx flash
 idf.py -p COMx monitor
 ```
 
-Use the COM port belonging to the Type-C UART/programming connection. Do not
-assume that the PC-facing OTG HID connection will create a COM port.
+Use the COM port belonging to the Type-C UART/programming connection.
 
-If the HID class is not enabled in the existing local sdkconfig, open `idf.py menuconfig` and set Component config → TinyUSB Stack → Human Interface Device Class → TinyUSB HID interfaces count to `1`. The repository default is `CONFIG_TINYUSB_HID_COUNT=1`.
-
-## Expected result
-
-After the PC-facing OTG connection is attached, Windows should enumerate
-`USB HID Gateway` as a HID device. The HID report descriptor contains
-keyboard and mouse top-level collections. No key presses or mouse movement
-should occur because this proof of concept deliberately sends no input reports.
+## Expected software result
 
 The serial log should report:
-
-- TinyUSB device stack installation.
+- TinyUSB device stack installation on the High-Speed OTG port.
 - HID device stack ready.
-- PC enumeration when the host configures the device.
-- Detach when the OTG cable is removed.
+- PC enumeration only after a valid PC-facing OTG Device connection is physically established.
+- Detach when that OTG cable is removed.
+
+A log line stating `USB DEVICE=ready` proves only successful stack initialization. A `CONNECTED` state or Windows USB Device Tree Viewer report is required to prove enumeration.
 
 ## Acceptance criteria
 
 - [ ] Firmware builds with ESP-IDF 6.1.
-- [ ] Device stack starts without errors.
+- [ ] TinyUSB explicitly selects `TINYUSB_PORT_HIGH_SPEED_0`.
+- [ ] A documented, electrically safe PC-facing OTG Device connector is established.
 - [ ] Windows enumerates the device consistently after reconnect.
 - [ ] Windows identifies keyboard and mouse HID collections.
 - [ ] USB descriptor retrieval succeeds in USB Device Tree Viewer or USBView.
-- [ ] The separate programming COM connection remains usable.
+- [ ] The separate programming/debugging connection remains usable.
 - [ ] No synthetic key or mouse input is generated.
 
 ## Not covered by this proof of concept
