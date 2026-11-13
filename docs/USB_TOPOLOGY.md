@@ -36,6 +36,8 @@ The monitor hub is High-Speed, self-powered and Multi-TT. The observed Logitech 
 
 Host and Device roles require independent controller instances. Simultaneous operation, connector routing, PHY, VBUS sourcing/protection and board pin assignment must be verified against the exact ESP32-P4 board revision and ESP-IDF version. Do not infer board support from the MCU name alone.
 
+For the Waveshare ESP32-P4-Module-DEV-KIT SKU 30560, H3 is electrically connected to U15 SEL (FSUSB42) through USB_SEL. It therefore affects the Type-C 6 mux path and must not be documented as a Type-A-only selector. The user-observed H3 HOST position (jumper pins 1-2) presented Espressif USB Serial/JTAG on Type-C 6 (`303A:1001`, COM3). The HOST marking does not establish the USB role of Type-C 6. See [Waveshare USB routing assessment](WAVESHARE_USB_ROUTING.md) for the selector truth table and outstanding channel validation.
+
 ## 4. Routing semantics
 
 ### Passthrough
