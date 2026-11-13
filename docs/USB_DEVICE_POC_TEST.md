@@ -7,7 +7,7 @@ collections: a keyboard and a mouse. It does not generate synthetic key or
 mouse input. The test is limited to USB enumeration and descriptor retrieval.
 
 The device stack uses Espressif's `esp_tinyusb` component (TinyUSB-based).
-The USB Serial/JTAG or USB-UART programming connection remains separate.
+On this Waveshare board, the Type-C UART/programming connector uses the onboard CH343P USB-to-UART bridge. Its COM port is separate from the PC-facing OTG HID connection.
 
 ## Board setup
 
@@ -36,6 +36,8 @@ idf.py -p COMx monitor
 
 Use the COM port belonging to the Type-C UART/programming connection. Do not
 assume that the PC-facing OTG HID connection will create a COM port.
+
+If the HID class is not enabled in the existing local sdkconfig, open `idf.py menuconfig` and set Component config → TinyUSB Stack → Human Interface Device Class → TinyUSB HID interfaces count to `1`. The repository default is `CONFIG_TINYUSB_HID_COUNT=1`.
 
 ## Expected result
 
