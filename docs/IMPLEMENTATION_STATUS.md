@@ -41,7 +41,7 @@ Implemented:
 - Added mount/detach state reporting to runtime diagnostics.
 - Deliberately sends no synthetic key or mouse input during enumeration testing.
 
-This is a source-level proof of concept only. It has not yet been built or verified on hardware. The supplied Windows result for Type-C 6 in the H3 HOST position (jumper pin 1-2) is Espressif USB Serial/JTAG (`303A:1001`, COM3). The SKU 30560 schematic confirms that H3 is electrically connected to U15 SEL; pin 1-2 forces SEL LOW/channel 1, while the open selector is pulled HIGH/channel 2. The HOST label must not be interpreted as the USB role of Type-C 6. The mapping of both U15 channels to the connector signal paths and the other H3-position Windows result still need to be verified. See `docs/WAVESHARE_USB_ROUTING.md`.
+This is a source-level proof of concept only. It has not yet been built or verified on hardware. The supplied Windows result for Type-C 6 in the H3 HOST position (jumper pin 1-2) is Espressif USB Serial/JTAG (`303A:1001`, COM3). The SKU 30560 schematic confirms that H3 is electrically connected to U15 SEL; pin 1-2 forces SEL LOW/channel 1, while the open selector is pulled HIGH/channel 2. The user clarified that U15 switches the Type-A route between USB1–USB3 through the onboard CH334F hub and direct USB4. USB1P1 is a separate direct connection to the ESP32-P4 core at GPIO24/GPIO25. The exact jumper-to-Type-A-route mapping remains to be verified. See `docs/WAVESHARE_USB_ROUTING.md`.
 
 ## Field-level mapping and proxy routing interface
 
