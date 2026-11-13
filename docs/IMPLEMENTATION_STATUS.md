@@ -15,16 +15,14 @@ Files:
 Implemented:
 - Added Espressif `esp_tinyusb` managed dependency.
 - Initialized the ESP32-P4 USB Device stack through TinyUSB.
-- Explicitly selected the ESP32-P4 High-Speed OTG port.
+- Explicitly selected the ESP32-P4 Full-Speed OTG port for the board's Type-C 6 connector.
 - Added one HID interface containing keyboard and mouse top-level collections.
-- Added Full-Speed and High-Speed configuration descriptors.
+- Added the Full-Speed HID configuration descriptor for the Type-C 6 FS OTG path.
 - Added HID report descriptor and class request callbacks.
 - Added mount/detach state reporting to runtime diagnostics.
 - Deliberately sends no synthetic key or mouse input during enumeration testing.
 
-This is a source-level proof of concept only. It has not yet been built or verified on hardware. The supplied Windows reports identify Type-C 4 as the CH343P UART bridge (`1A86:55D3`) and Type-C 6 as the fixed-function USB Serial/JTAG controller (`303A:1001`). Neither is the programmable OTG HID connection.
-
-Waveshare documents the four Type-A sockets as one direct P4 OTG port plus three ports behind the CH334 hub, selected by H3. The current documentation does not identify a separate standards-compliant PC-facing OTG Device connector for simultaneous use with peripheral-facing USB Host. This is now a hardware integration blocker, not evidence of a HID descriptor failure. See `docs/WAVESHARE_USB_ROUTING.md`.
+This is a source-level proof of concept only. It has not yet been built or verified on hardware. The supplied Windows reports identify Type-C 4 as the CH343P UART bridge (`1A86:55D3`) and Type-C 6 as USB Serial/JTAG (`303A:1001`). The Waveshare schematic shows Type-C 6 routed through FSUSB42 mux U15, which can select USB Serial/JTAG or the ESP32-P4 USB1.1 Full-Speed OTG pair. The PoC was selecting the wrong controller (HS) for this connector; it is corrected to FS OTG. U15 selection and simultaneous HS Host + FS Device operation still require hardware validation. See `docs/WAVESHARE_USB_ROUTING.md`.
 
 ## Field-level mapping and proxy routing interface
 
@@ -54,8 +52,8 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 ## Integration still pending
 
-- Establish a standards-compliant physical PC-facing USB Device path alongside peripheral-facing USB Host.
-- Verify simultaneous Host and Device operation on the selected board or select suitable replacement hardware.
+- Verify U15 selects USB1.1 FS OTG for Type-C 6.
+- Verify simultaneous USB 2.0 HS Host on Type-A and USB 1.1 FS Device on Type-C 6.
 - USB Host stack and hub/device enumeration.
 - HID Host interface and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
