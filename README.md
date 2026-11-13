@@ -17,7 +17,7 @@ The gateway is not a conventional USB hub or a guaranteed transaction-level USB 
 
 The observed setup contains an ASUS ROG monitor with a four-port Genesys Logic hub (`05E3:0610`). The G815 and G502 appear as sibling devices below this hub. The G502 is physically connected through the G815 USB pass-through cable; that pass-through is a cable path, not an additional hub.
 
-The current development board is the Waveshare ESP32-P4-Module-DEV-KIT. Its Type-C UART/programming connection is separate from the Type-A USB OTG connector. The Type-A OTG path is selected between HOST and DEVICE using the board's H3 jumper. See [PC-facing USB HID proof of concept](docs/USB_DEVICE_POC_TEST.md) and the official [Waveshare board documentation](https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT).
+The current development board is the Waveshare ESP32-P4-Module-DEV-KIT. Type-C 4 is the CH343P UART bridge; Type-C 6 exposes the fixed-function USB Serial/JTAG controller; the four Type-A sockets are the P4 OTG path (one direct port plus three ports behind the CH334 hub). H3 selects the Type-A port routing; it does not turn Type-C 6 into a TinyUSB HID connector. A separate, standards-compliant PC-facing OTG Device connection alongside peripheral-facing Host operation has not yet been established. See [Waveshare USB routing assessment](docs/WAVESHARE_USB_ROUTING.md), [PC-facing USB HID proof of concept](docs/USB_DEVICE_POC_TEST.md), and the official [Waveshare board documentation](https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT).
 
 ## Architecture
 
@@ -32,7 +32,7 @@ The current development board is the Waveshare ESP32-P4-Module-DEV-KIT. Its Type
 
 ## Current implementation status
 
-The repository is primarily an architecture and evidence baseline. A first PC-facing USB HID enumeration proof of concept has now been added using Espressif's TinyUSB-based `esp_tinyusb` component. It exposes keyboard and mouse HID collections but intentionally sends no input reports. The source has not yet been built or verified on hardware. USB Host transport, the generic parser, report forwarding, motion algorithms and physical output drivers remain planned or skeletal. See [Firmware implementation status](docs/IMPLEMENTATION_STATUS.md) and [USB Device PoC test procedure](docs/USB_DEVICE_POC_TEST.md).
+The repository is primarily an architecture and evidence baseline. A first PC-facing USB HID enumeration proof of concept has now been added using Espressif's TinyUSB-based `esp_tinyusb` component. It exposes keyboard and mouse HID collections but intentionally sends no input reports. The source has not yet been built or verified on hardware. The board's external USB routing is also a blocker for the intended simultaneous Host-to-peripherals and Device-to-PC topology. USB Host transport, the generic parser, report forwarding, motion algorithms and physical output drivers remain planned or skeletal. See [Firmware implementation status](docs/IMPLEMENTATION_STATUS.md) and [USB Device PoC test procedure](docs/USB_DEVICE_POC_TEST.md).
 
 Runtime diagnostics provide a five-second serial summary, a bounded USB-device registry, proxy counters, I2C health reporting hooks, heap and uptime information. Real USB enumeration, HID parsing, proxy traffic and I2C health reporting require the corresponding hardware drivers to be connected. See [Runtime diagnostics](docs/RUNTIME_DIAGNOSTICS.md).
 
