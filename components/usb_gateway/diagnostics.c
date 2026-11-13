@@ -245,7 +245,7 @@ void diagnostics_process(usb_gateway_mode_t mode)
 
 	ESP_LOGI(TAG, "PROXY mode=%s state=%s forwarded=%lu processed=%lu "
 		"errors=%lu last_error=%d",
-		mode == USB_GATEWAY_MODE_PROXY ? "PROXY" : "PASSTHROUGH",
+		mode == USB_GATEWAY_MODE_PASSTHROUGH ? "PASSTHROUGH" : "HOTKEY/UNDEFINED",
 		state_name(s_proxy.state), (unsigned long)s_proxy_forwarded,
 		(unsigned long)s_proxy_processed, (unsigned long)s_proxy.errors,
 		s_proxy.error_code);
