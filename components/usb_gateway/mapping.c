@@ -6,12 +6,15 @@ static mapping_config_t s_config;
 static mapping_event_callback_t s_event_callback;
 static void *s_event_context;
 
-static bool rule_matches(uint16_t usage_page, uint16_t usage)
+static bool rule_matches(
+	const mapping_config_t *config,
+	uint16_t usage_page,
+	uint16_t usage)
 {
 	size_t i;
 
-	for (i = 0; i < s_config.rule_count; ++i) {
-		const mapping_rule_t *rule = &s_config.rules[i];
+	for (i = 0; i < config->rule_count; ++i) {
+		const mapping_rule_t *rule = &config->rules[i];
 
 		if (rule->enabled &&
 			rule->usage_page == usage_page &&
@@ -100,6 +103,7 @@ mapping_result_t mapping_route_report(
 	uint8_t *output_payload,
 	size_t output_capacity)
 {
+	const mapping_config_t config = s_config;
 	size_t i;
 
 	if (input_payload == NULL || output_payload == NULL ||
@@ -147,7 +151,7 @@ mapping_result_t mapping_route_report(
 			continue;
 		}
 
-		if (!rule_matches(field->usage_page, field->usage)) {
+		if (!rule_matches(&config, field->usage_page, field->usage)) {
 			continue;
 		}
 
