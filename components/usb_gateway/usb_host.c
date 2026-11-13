@@ -118,7 +118,7 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
 		&slot->handle);
 	if (result != ESP_OK) {
 		ESP_LOGE(TAG, "Cannot open USB device at address %u: %s",
-			slot->address, esp_err_to_name(result));
+			(unsigned int)slot->address, esp_err_to_name(result));
 		return;
 	}
 
@@ -154,7 +154,7 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
 			"USB configuration addr=%u interfaces=%u attributes=0x%02X",
 			(unsigned int)slot->address,
 			(unsigned int)config_desc->bNumInterfaces,
-			config_desc->bmAttributes);
+			(unsigned int)config_desc->bmAttributes);
 
 		diagnostic_device.interface_count = config_desc->bNumInterfaces;
 	} else {
