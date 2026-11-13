@@ -1,5 +1,21 @@
 {
 	"editor.insertSpaces": false,
 	"editor.tabSize": 4,
-	"files.trimTrailingWhitespace": true
+	"files.trimTrailingWhitespace": true,
+  "idf.currentSetup": "D:\\Tools\\esp\\v6.1\\esp-idf",
+  "clangd.path": "D:\\Tools\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=d:\\Software\\USB-HID-Gateway\\USB-HID-Gateway\\build\\default"
+  ],
+  "idf.port": "COM5",
+  "idf.flashType": "UART",
+  "idf.monitorPort": "COM5",
+  "idf.openOcdConfigs": [
+    "board/esp32p4-builtin.cfg"
+  ],
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32p4"
+  }
 }
