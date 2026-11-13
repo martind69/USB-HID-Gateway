@@ -141,8 +141,12 @@ void usb_device_init(void)
 	tinyusb_config_t config = TINYUSB_DEFAULT_CONFIG(usb_device_event_handler);
 	esp_err_t result;
 
-	/* ESP32-P4 exposes its programmable OTG device controller on the HS port. */
-	config.port = TINYUSB_PORT_HIGH_SPEED_0;
+	/*
+	 * Type-C connector 6 is the board's USB 1.1 Full-Speed OTG path.
+	 * The Type-A connector group is wired to the separate USB 2.0 HS OTG path.
+	 * Keep HID Device on FS so the HS controller remains available for USB Host.
+	 */
+	config.port = TINYUSB_PORT_FULL_SPEED_0;
 
 	config.descriptor.device = NULL;
 	config.descriptor.string = s_hid_string_descriptor;
@@ -150,11 +154,8 @@ void usb_device_init(void)
 		sizeof(s_hid_string_descriptor) / sizeof(s_hid_string_descriptor[0]);
 	config.descriptor.full_speed_config = s_hid_config_fs;
 
-#if (TUD_OPT_HIGH_SPEED)
-	config.descriptor.high_speed_config = s_hid_config_hs;
-#endif
 
-	ESP_LOGI(TAG, "Installing TinyUSB HID device stack on USB High-Speed OTG port");
+	ESP_LOGI(TAG, "Installing TinyUSB HID device stack on USB Full-Speed OTG port");
 	result = tinyusb_driver_install(&config);
 	if (result != ESP_OK) {
 		ESP_LOGE(TAG, "TinyUSB device installation failed: %s",
