@@ -11,5 +11,5 @@ idf_component_register(
 		"dac_output.c"
 		"gpio_output.c"
 	INCLUDE_DIRS "." "include"
-	REQUIRES log freertos
+	REQUIRES log freertos esp_timer heap
 )
