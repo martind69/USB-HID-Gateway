@@ -45,6 +45,8 @@ The repository is primarily an architecture and evidence baseline. USB Host/Devi
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
 - [Review of external implementation proposal](docs/IMPLEMENTATION_PROPOSAL_REVIEW.md)
+- [Implementation status](docs/IMPLEMENTATION_STATUS.md)
+- [Input mapping and report-routing interface](docs/INPUT_MAPPING_ROUTING.md)
 
 ### USB/HID evidence and design
 - [USB topology](docs/USB_TOPOLOGY.md)
