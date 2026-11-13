@@ -1,6 +1,7 @@
 #include "usb_host.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -71,7 +72,7 @@ static void usb_host_client_event_cb(
 			slot->address = event->new_dev.address;
 			slot->open_pending = true;
 			ESP_LOGI(TAG, "Device enumerated, address=%u",
-				event->new_dev.address);
+				(unsigned int)event->new_dev.address);
 		}
 		break;
 
@@ -87,7 +88,7 @@ static void usb_host_client_event_cb(
 
 	case USB_HOST_CLIENT_EVENT_DEV_REMOVED:
 		ESP_LOGI(TAG, "Device removed, address=%u",
-			event->dev_removed.address);
+			(unsigned int)event->dev_removed.address);
 		break;
 
 	case USB_HOST_CLIENT_EVENT_DEV_SUSPENDED:
@@ -139,20 +140,20 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
 
 	ESP_LOGI(TAG,
 		"USB device addr=%u VID=%04X PID=%04X speed=%s configuration=%u",
-		slot->address,
-		device_desc->idVendor,
-		device_desc->idProduct,
+		(unsigned int)slot->address,
+		(unsigned int)device_desc->idVendor,
+		(unsigned int)device_desc->idProduct,
 		(info.speed == USB_SPEED_HIGH) ? "HS" :
 		(info.speed == USB_SPEED_FULL) ? "FS" : "LS",
-		info.bConfigurationValue);
+		(unsigned int)info.bConfigurationValue);
 
 	result = usb_host_get_active_config_descriptor(slot->handle,
 		&config_desc);
 	if (result == ESP_OK && config_desc != NULL) {
 		ESP_LOGI(TAG,
 			"USB configuration addr=%u interfaces=%u attributes=0x%02X",
-			slot->address,
-			config_desc->bNumInterfaces,
+			(unsigned int)slot->address,
+			(unsigned int)config_desc->bNumInterfaces,
 			config_desc->bmAttributes);
 
 		diagnostic_device.interface_count = config_desc->bNumInterfaces;
@@ -184,7 +185,7 @@ static void usb_host_close_device(usb_host_device_slot_t *slot)
 
 		if (result != ESP_OK) {
 			ESP_LOGW(TAG, "Closing USB device addr=%u failed: %s",
-				slot->address, esp_err_to_name(result));
+				(unsigned int)slot->address, esp_err_to_name(result));
 		}
 	}
 
