@@ -2,76 +2,102 @@
 
 Date: 2026-11-13
 
-## Corrected conclusion
+## Board identification
 
-The earlier conclusion that Type-C connector 6 is only USB Serial/JTAG was incorrect. The Waveshare schematic identifies this connector as **USB1.1 Type-C** and shows an FSUSB42 analog USB switch (U15) between the connector and two signal paths. One path is the fixed USB Serial/JTAG pair (`USB_DBG_D_P/N`); the other is the ESP32-P4 USB 1.1 OTG path (`USBHSD1_P/N`). The selector net is named `USB_SEL`.
+- Board: Waveshare ESP32-P4-Module-DEV-KIT
+- SKU: 30560
+- Type-C 4: CH343P USB-to-UART bridge
+- Type-C 6: USB connector routed through analog switch U15 (FSUSB42)
+- H3: hardware selector connected to U15 SEL through net USB_SEL
 
-Therefore, the Windows report `303A:1001` on connector 6 means that the switch was routing the connector to USB Serial/JTAG at the time of that capture. It does not prove that connector 6 cannot carry TinyUSB HID. The USB mux selection and the selected TinyUSB controller must be checked together.
+The exact PCB revision is not marked on the user's board. The uploaded SKU 30560 schematic is the basis for the electrical statements below.
+
+## H3 and U15: corrected electrical relationship
+
+The previous repository text incorrectly stated that H3 only selects the Type-A routing and is unrelated to U15. This is false.
+
+The schematic directly connects H3 to U15 pin 10 (SEL) through net USB_SEL. U15 is an FSUSB42 analog USB 2:1 switch. Its select truth table is printed in the schematic:
+
+- SEL = LOW selects channel 1.
+- SEL = HIGH selects channel 2.
+
+H3 is a three-pin header:
+- Pin 1 is connected to GND through R46 (0 ohm).
+- Pins 2 and 3 are tied together on USB_SEL.
+- R37 (47 kohm) pulls USB_SEL HIGH.
+- A jumper between pin 1 and pin 2 (or pin 1 and pin 3) forces USB_SEL LOW.
+- With no jumper between pin 1 and the tied selector pins, USB_SEL is pulled HIGH.
+- A jumper only between pins 2 and 3 changes nothing because those pins are already connected.
+
+The board/FAQ position name HOST must not be interpreted as proof that Type-C 6 is operating as a USB Host controller. It is a hardware routing label. The actual USB role must be established from the selected signal path and the Windows enumeration.
+
+## Observed Windows result
+
+The user supplied a USB Device Tree Viewer result for the H3 HOST position (jumper pin 1-2). Type-C 6 enumerated as:
+
+- Espressif USB Serial/JTAG
+- VID:PID `303A:1001`
+- Windows COM port: COM3
+
+This is a USB Device enumeration, not evidence that Type-C 6 is operating as a USB Host. It establishes that, in the tested HOST jumper position, the PC-facing connector presented the ESP32-P4 USB Serial/JTAG function.
+
+Do not overwrite this observation with the assumption that the HOST marking means Type-C 6 must expose the application USB Host controller. Type-C 4 remains the independent CH343P UART bridge (VID:PID `1A86:55D3`, previously COM5).
+
+The result for the other H3 position must be recorded separately if/when measured. Do not infer its Windows identity or USB role from the HOST capture.
 
 ## Physical connectors
 
-| Board reference | Physical interface | Function |
+| Board reference | Physical interface | Verified / documented function |
 |---|---|---|
-| 4 | Type-C UART | CH343P USB-to-UART bridge; WCH VID:PID `1A86:55D3`; use for flashing and UART logs. |
-| 6 | Type-C USB1.1 | FSUSB42 mux (U15) selects between USB Serial/JTAG and the P4 USB 1.1 Full-Speed OTG path. This is the intended candidate PC-facing HID connector when the mux selects OTG. |
-| 12 | Four Type-A sockets | P4 USB 2.0 High-Speed OTG path. One socket is directly connected; three are behind CH334F hub U14. |
-| 13 | H3 jumper | Selects the Type-A routing. Waveshare FAQ: HOST enables Type-A port 1; DEVICE enables Type-A ports 2–4 through the CH334 hub. This jumper is not a software USB role setting. |
+| 4 | Type-C UART | CH343P USB-to-UART bridge; WCH VID:PID `1A86:55D3`; previously COM5. |
+| 6 | Type-C USB1.1 | Connected through U15 (FSUSB42). Actual signal path depends on H3 / USB_SEL. HOST-position test presented USB Serial/JTAG as `303A:1001`, COM3. |
+| 12 | Four Type-A sockets | USB 2.0 High-Speed OTG peripheral connection group; one socket is direct and three are behind CH334F hub U14. |
+| 13 | H3 jumper | Three-pin selector electrically connected to U15 SEL. Pin 1 is GND; pins 2 and 3 are tied to USB_SEL. |
 
-Sources:
-- Waveshare hardware description: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT
-- Waveshare FAQ: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT/FAQ
-- Waveshare schematic, especially U14 (CH334F), U15 (FSUSB42), H1/H2 and H3: https://files.waveshare.com/wiki/ESP32-P4-Module-DEV-KIT/ESP32-P4-Module-DEV-KIT.pdf
-- ESP32-P4 USB Device Stack: https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_device.html
-- ESP32-P4 USB Host: https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html
+## Controller assignment: intended architecture, not yet board-verified
 
-## ESP32-P4 controller assignment
+ESP32-P4 provides separate USB controllers, and the project intends to use independent paths:
 
-ESP32-P4 provides two independent OTG controllers:
-- USB 2.0 High-Speed OTG: dedicated USB_DM/USB_DP pins; routed by this board to the Type-A group. Use this controller for peripheral-facing USB Host.
-- USB 1.1 Full-Speed OTG: GPIO26/GPIO27; routed through U15 to Type-C connector 6. Use this controller for PC-facing TinyUSB HID Device.
-- USB Serial/JTAG: separate fixed-function debug controller; it can also be routed to Type-C 6 by U15. It is not a HID-capable application controller.
-- Type-C connector 4 remains the CH343P UART connection and is independent of the above.
+- USB 2.0 High-Speed OTG Host -> peripheral-facing connection for G815/G502.
+- USB 1.1 Full-Speed OTG Device -> PC-facing HID connection.
+- Type-C 4 / CH343P -> programming and UART logs.
 
-This gives the intended physical architecture without a USB role conflict:
-- Type-C 6 / USB FS OTG / TinyUSB Device -> PC (keyboard + mouse HID)
-- Type-A 12 / USB HS OTG / USB Host -> G815/G502, with H3 selecting the required Type-A/hub path
-- Type-C 4 / CH343P UART -> development PC for logs and flashing
+The ESP-IDF USB documentation describes independent HS and FS OTG controllers. However, the exact board-level routing through U15 and H3 must be reconciled with the measured connector behavior before treating the intended Type-C 6 FS Device path as established.
 
-The ESP-IDF USB Host documentation describes the HS and FS OTG controllers as independently operable. The project still needs an on-board simultaneous Host + Device integration test; this is not yet claimed as verified.
+The schematic labels U15's signal paths as `USB_N/P` and `USBHSD1_N/P`, with the switch selection shown as channel 1 for LOW and channel 2 for HIGH. These net names and the Windows HOST-position capture must be used together; do not assign HOST/DEVICE roles to the mux channels based only on their names.
 
-## Firmware correction
+## Firmware implications
 
-The TinyUSB PoC must select `TINYUSB_PORT_FULL_SPEED_0`, not `TINYUSB_PORT_HIGH_SPEED_0`, because connector 6's OTG signal path is USB 1.1 FS. The Type-A connector group is the separate HS OTG path and is reserved for USB Host.
+The TinyUSB PoC is configured for `TINYUSB_PORT_FULL_SPEED_0` because the intended PC-facing HID path is the ESP32-P4 Full-Speed OTG controller. This firmware setting does not control U15 and does not override H3.
 
-Do not configure the HID PoC on the HS controller while expecting it to enumerate through Type-C 6. A successful `tinyusb_driver_install()` only confirms stack initialization; PC enumeration must still be verified.
-
-## USB switch U15 and H3: do not conflate them
-
-U15 is an FSUSB42 analog USB switch. Its `SEL` input is the schematic net `USB_SEL`; it chooses whether Type-C connector 6 is connected to USB Serial/JTAG or to the USB1.1 OTG signal pair. The exact source/strap/logic level for `USB_SEL` must be confirmed from the fitted board revision and schematic connectivity before assigning a GPIO or recommending a jumper change.
-
-H3 is documented by Waveshare as the Type-A routing selector for the direct Type-A socket versus the CH334 hub ports. Do not assume H3 controls U15 unless the exact schematic/revision confirms that electrical connection.
-
-The user supplied USB Device Tree Viewer captures for H3 HOST and DEVICE both showed:
-- Type-C 4: CH343P (`1A86:55D3`)
-- Type-C 6: Espressif USB Serial/JTAG (`303A:1001`)
-
-These captures establish that the Type-C 6 switch was still presenting USB Serial/JTAG in both captured states. They do not establish that the FS OTG mux path was selected. The next hardware test must verify U15's selected path, then enumerate the FS TinyUSB device.
+A successful TinyUSB initialization only proves that the stack initialized. It does not prove that Type-C 6 is physically connected to the FS OTG signals. Windows must enumerate the configured TinyUSB VID/PID rather than `303A:1001` before the PC-facing HID path is considered validated.
 
 ## Required validation sequence
 
 1. Keep Type-C 4 connected for CH343P UART logs and flashing.
-2. Connect Type-C 6 to the PC.
-3. Build and flash firmware with TinyUSB set to `TINYUSB_PORT_FULL_SPEED_0`.
-4. Confirm from schematic/revision or a safe continuity/logic-level measurement that U15 selects the P4 USB1.1 OTG pair, not `USB_DBG_D_P/N`. Do not short or move unidentified pads while powered.
-5. Check Windows Device Manager / USB Device Tree Viewer. Expected: TinyUSB HID Gateway (VID/PID from the configured device descriptor), not `303A:1001`.
-6. Separately connect the G815/G502 to Type-A 12 with H3 set to the routing documented for the CH334 hub path. Verify that the HS USB Host can enumerate them while the FS HID Device remains connected to the PC.
-7. Confirm both buses work concurrently before marking the USB topology milestone complete.
+2. Record H3 position unambiguously: jumper absent or jumper between pins 1-2 (pins 2 and 3 are electrically common).
+3. For each H3 state, connect Type-C 6 to the PC and save the complete USB Device Tree Viewer result, including VID:PID, interfaces and COM-port assignment.
+4. Compare each result with the U15 channel truth table and the complete schematic net connections. Do not infer the USB role from the HOST/DEVICE silkscreen alone.
+5. Verify which H3 state routes Type-C 6 to the ESP32-P4 USB1.1 FS OTG controller.
+6. Only then test TinyUSB on `TINYUSB_PORT_FULL_SPEED_0`; expected Windows enumeration is the configured HID Gateway identity, not `303A:1001`.
+7. Separately verify HS Host enumeration of the G815/G502 through the Type-A group.
+8. Verify simultaneous HS Host and FS Device operation before marking the board topology milestone complete.
 
 ## Current status
 
-- The board contains the required two OTG controllers and routes them to separate physical paths (HS to Type-A group, FS via U15 to Type-C 6).
-- Type-C 6 was observed as USB Serial/JTAG because U15 selected the debug path; the capture does not prove the OTG path is unavailable.
-- The TinyUSB PoC previously selected the wrong controller for Type-C 6. This is corrected to Full-Speed OTG in firmware.
-- U15 mux selection is not yet validated on the user's exact board revision.
-- Simultaneous HS Host + FS Device operation is architecturally supported by separate controllers but remains an integration test.
-- No Windows HID enumeration or end-to-end forwarding is claimed yet.
+- [x] SKU 30560 schematic reviewed for U15 and H3 connectivity.
+- [x] H3 is confirmed connected to U15 SEL; prior documentation claiming otherwise is withdrawn.
+- [x] H3 electrical logic established: pin 1-2 forces SEL LOW/channel 1; open selector defaults HIGH/channel 2.
+- [x] HOST-position Windows capture recorded: Type-C 6 enumerates as Espressif USB Serial/JTAG `303A:1001`, COM3.
+- [ ] Windows result for the other H3 position recorded and compared.
+- [ ] Exact mapping of U15 channel 1/channel 2 to the application FS OTG path validated on the board.
+- [ ] TinyUSB HID enumeration on Type-C 6 verified.
+- [ ] Simultaneous HS Host + FS Device operation verified.
+
+## Sources
+
+- User-provided Waveshare ESP32-P4-Module-DEV-KIT schematic for SKU 30560.
+- Waveshare board documentation: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT
+- Waveshare FAQ: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT/FAQ
+- ESP32-P4 USB Device Stack: https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_device.html
+- ESP32-P4 USB Host: https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html
