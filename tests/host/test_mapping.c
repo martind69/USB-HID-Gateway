@@ -15,15 +15,15 @@ static void on_mapping_event(const mapping_event_t *event, void *context)
 
 int main(void)
 {
-	const uint8_t input[] = { 0x1A, 0xA5 };
+	const uint8_t input[] = { 0xDA, 0xA5, 0x7F };
 	uint8_t output[sizeof(input)] = { 0 };
 	mapping_config_t config = { 0 };
 	mapping_report_field_t fields[2] = {
 		{
 			.usage_page = 0x07,
 			.usage = 0x1A,
-			.bit_offset = 0,
-			.bit_size = 8,
+			.bit_offset = 6,
+			.bit_size = 5,
 			.neutral_value = 0,
 			.value = 0x1A,
 			.is_array = true,
@@ -32,7 +32,7 @@ int main(void)
 		{
 			.usage_page = 0x09,
 			.usage = 1,
-			.bit_offset = 8,
+			.bit_offset = 16,
 			.bit_size = 1,
 			.neutral_value = 0,
 			.value = 1,
@@ -68,12 +68,13 @@ int main(void)
 		2,
 		output,
 		sizeof(output)) == MAPPING_OK);
-	assert(output[0] == 0x00);
-	assert(output[1] == 0xA5);
+	assert(output[0] == 0x1A);
+	assert(output[1] == 0xA0);
+	assert(output[2] == 0x7F);
 	assert(s_event_count == 1);
 
 	/* Invalid metadata must not produce a partially modified report. */
-	fields[1].bit_offset = 16;
+	fields[1].bit_offset = 24;
 	memset(output, 0xCC, sizeof(output));
 	assert(mapping_route_report(
 		MAPPING_MODE_PROXY,
@@ -83,11 +84,13 @@ int main(void)
 		2,
 		output,
 		sizeof(output)) == MAPPING_ERR_FIELD_RANGE);
-	assert(output[0] == 0xCC && output[1] == 0xCC);
+	assert(output[0] == 0xCC);
+	assert(output[1] == 0xCC);
+	assert(output[2] == 0xCC);
 
 	/* Empty Array slots are not consumed. */
 	fields[0].usage = 0;
-	fields[1].bit_offset = 8;
+	fields[1].bit_offset = 16;
 	assert(mapping_route_report(
 		MAPPING_MODE_PROXY,
 		input,
