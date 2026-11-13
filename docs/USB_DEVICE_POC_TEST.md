@@ -47,7 +47,7 @@ Use the COM port belonging to Type-C 4 / CH343P, not COM3 from Type-C 6 / USB Se
 The serial log should report:
 - TinyUSB device stack installation on USB Full-Speed OTG.
 - HID device stack ready.
-- PC enumeration only when U15 routes Type-C 6 to the ESP32-P4 FS OTG signals.
+- PC enumeration when the separate FS OTG Device signal path is physically connected to the PC; H3/U15 Type-A selection is independent.
 - Detach when Type-C 6 is removed.
 
 A log line stating `USB DEVICE=ready` proves only successful stack initialization. A `CONNECTED` state and Windows enumeration of the configured HID Gateway identity are required to prove operation. If Windows instead reports `303A:1001`, Type-C 6 is still presenting USB Serial/JTAG.
