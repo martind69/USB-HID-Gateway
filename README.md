@@ -32,6 +32,8 @@ The observed setup contains an ASUS ROG monitor with a four-port Genesys Logic h
 
 The repository is primarily an architecture and evidence baseline. USB Host/Device transport, the generic parser, mapping, motion algorithms and physical output drivers remain planned or skeletal unless explicitly marked otherwise in their module documentation. No successful ESP32-P4 firmware build or end-to-end hardware validation is claimed.
 
+Runtime diagnostics now provide a five-second serial summary, a bounded USB-device registry, proxy counters, I2C health reporting hooks, heap and uptime information. Real USB enumeration, HID parsing, proxy traffic and I2C health remain unavailable until their hardware drivers are implemented and connected to the diagnostic API. See [Runtime diagnostics](docs/RUNTIME_DIAGNOSTICS.md).
+
 ## Documentation
 
 ### Architecture and requirements
@@ -44,6 +46,7 @@ The repository is primarily an architecture and evidence baseline. USB Host/Devi
 - [Configuration formats](docs/CONFIGURATION_FORMATS.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
+- [Runtime diagnostics](docs/RUNTIME_DIAGNOSTICS.md)
 - [Review of external implementation proposal](docs/IMPLEMENTATION_PROPOSAL_REVIEW.md)
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Input mapping and report-routing interface](docs/INPUT_MAPPING_ROUTING.md)
