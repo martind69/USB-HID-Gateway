@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "diagnostics.h"
+#include "esp_bit_defs.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -251,11 +252,12 @@ void usb_host_init(void)
 {
 	const usb_host_config_t host_config = {
 		/*
-		 * The Logitech G815/G502 are Full-Speed devices.
-		 * Running the HS OTG controller in FS/LS-only mode also avoids
-		 * the missing Transaction Translator support for FS/LS devices
-		 * behind a High-Speed hub in the current ESP-IDF hub driver.
+		 * BIT0 selects the USB 2.0 High-Speed OTG controller on ESP32-P4.
+		 * The Logitech G815/G502 are Full-Speed devices. Running the HS
+		 * controller in FS/LS-only mode avoids the missing Transaction
+		 * Translator support for FS/LS devices behind a High-Speed hub.
 		 */
+		.peripheral_map = BIT0,
 		.fsls_only = true
 	};
 
