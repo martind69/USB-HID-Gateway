@@ -36,13 +36,21 @@ void usb_gateway_init(void)
 	mapping_set_event_callback(NULL, NULL);
 	hid_proxy_init();
 	usb_device_init();
+
+#if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
+	ESP_LOGW(TAG, "USB Host disabled for isolated USB Device mouse test");
+#else
 	usb_host_init();
+#endif
+
 	diagnostics_set_proxy_state(DIAG_STATE_UNAVAILABLE, 0);
 }
 
 void usb_gateway_process(void)
 {
+#if !CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 	usb_host_process();
+#endif
 	usb_device_process();
 	hotkey_process();
 	hid_proxy_process();
