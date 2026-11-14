@@ -2,7 +2,7 @@
 
 ## Scope
 
-This milestone installs the ESP-IDF USB Host Library on the ESP32-P4 High-Speed OTG controller and reports enumerated USB devices. It is an enumeration/descriptor diagnostic, not yet a HID class driver or a gateway data path.
+This milestone installs the ESP-IDF USB Host Library on the ESP32-P4 High-Speed OTG controller (`peripheral_map = BIT0`) and reports enumerated USB devices. It is an enumeration/descriptor diagnostic, not yet a HID class driver or a gateway data path.
 
 The firmware:
 - Installs the USB Host Library.
@@ -15,7 +15,7 @@ The firmware:
 
 ## Speed mode and hub limitation
 
-The host controller is configured with `fsls_only = true`. The target Logitech G815/G502 devices were observed as Full-Speed devices. Espressif documents that the external hub driver currently has no Transaction Translator layer, so Full-/Low-Speed devices behind a High-Speed hub are not supported in normal High-Speed mode. The HS controller must therefore be operated as an FS/LS-only host for this test.
+The host controller is explicitly selected with `peripheral_map = BIT0` (USB 2.0 High-Speed OTG on ESP32-P4) and configured with `fsls_only = true`. The target Logitech G815/G502 devices were observed as Full-Speed devices. Espressif documents that the external hub driver currently has no Transaction Translator layer, so Full-/Low-Speed devices behind a High-Speed hub are not supported in normal High-Speed mode. The HS controller must therefore be operated as an FS/LS-only host for this test.
 
 This sacrifices High-Speed operation on the host bus during this diagnostic milestone. Do not interpret this as the final throughput configuration.
 
