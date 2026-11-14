@@ -10,6 +10,7 @@
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 #include "class/hid/hid_device.h"
+#include "hal/usb_serial_jtag_ll.h"
 
 static const char *TAG = "usb_device";
 static bool s_driver_installed;
@@ -144,7 +145,7 @@ static void usb_device_mouse_test_process(void)
 		return;
 	}
 
-	if (tud_hid_report(0, 1, reports[s_mouse_test_report_index],
+	if (tud_hid_report(1, reports[s_mouse_test_report_index],
 		sizeof(reports[s_mouse_test_report_index]))) {
 		ESP_LOGI(TAG, "Mouse test report %u sent",
 			(unsigned int)(s_mouse_test_report_index + 1));
@@ -158,11 +159,16 @@ void usb_device_init(void)
 	tinyusb_config_t config = TINYUSB_DEFAULT_CONFIG(usb_device_event_handler);
 	esp_err_t result;
 
+#if CONFIG_IDF_TARGET_ESP32P4
 	/*
-	 * Type-C 6 is wired to GPIO24/GPIO25. On ESP32-P4 this is FS PHY1.
-	 * The USB PHY/eFuse routing must assign FS PHY1 to USB OTG before this
-	 * connector can enumerate as the TinyUSB device.
+	 * Route USB Serial/JTAG to PHY1 (GPIO26/GPIO27) and USB OTG to PHY0
+	 * (GPIO24/GPIO25), where the board's Type-C 6 / USB1P1 connector is wired.
+	 * This is a runtime PHY selection; it does not program an eFuse.
 	 */
+	usb_serial_jtag_ll_phy_select(1);
+	ESP_LOGI(TAG, "USB PHY mapping: USB OTG=GPIO24/25, USB Serial/JTAG=GPIO26/27");
+#endif
+
 	config.port = TINYUSB_PORT_FULL_SPEED_0;
 
 	config.descriptor.device = NULL;
