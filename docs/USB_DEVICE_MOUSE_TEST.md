@@ -37,24 +37,26 @@ Disable the option again to restore the normal composite keyboard/mouse descript
 - Connect Type-C 6 to the PC as the USB Device under test.
 - H3/U15 only changes the Type-A routing and has no electrical effect on Type-C 6 / USB1P1.
 
-Type-C 6 is wired to GPIO24/GPIO25. On ESP32-P4 those pins are FS PHY1. The default PHY assignment connects FS PHY1 to USB Serial/JTAG and FS PHY2 (GPIO27/GPIO26) to USB OTG FS. The PHY assignment must therefore be checked before expecting TinyUSB to appear on Type-C 6.
+Type-C 6 / USB1P1 is wired to GPIO24/GPIO25 (USB FS PHY0). Before TinyUSB is installed, the firmware calls the ESP-IDF low-level PHY selector:
 
-## PHY/eFuse constraint
+```c
+usb_serial_jtag_ll_phy_select(1);
+```
 
-The ESP32-P4 eFuse `USB_PHY_SEL` changes the default assignment:
+This runtime selection maps USB Serial/JTAG to PHY1 (GPIO26/GPIO27) and USB OTG to PHY0 (GPIO24/GPIO25). It does not burn or modify an eFuse. Type-C 4 / CH343P remains the independent UART connection for flashing and logs.
 
-- Value 0: FS PHY1 -> USB Serial/JTAG; FS PHY2 -> USB OTG FS.
-- Value 1: FS PHY2 -> USB Serial/JTAG; FS PHY1 -> USB OTG FS.
+## Runtime PHY selection
 
-The desired Type-C 6 mapping (GPIO24/GPIO25 -> USB OTG FS) requires the swapped assignment. Do not burn this eFuse until the current eFuse summary and the consequences for boot/download behavior have been reviewed. The eFuse is irreversible.
+The firmware performs the PHY swap in software with `usb_serial_jtag_ll_phy_select(1)` before `tinyusb_driver_install()`. The ESP-IDF implementation enables software PHY mapping and assigns USB Serial/JTAG to PHY1 and USB OTG (USB_WRAP) to PHY0. On this board that places TinyUSB on the Type-C 6 GPIO24/GPIO25 connection.
 
-The CH343P on Type-C 4 remains a separate UART bridge and is the preferred programming/logging connection for this test.
+No eFuse programming is required for this test. The native USB Serial/JTAG connection is moved to GPIO26/GPIO27 and is therefore not expected to remain available on Type-C 6. Use the independent CH343P on Type-C 4 for flashing and runtime logs.
 
 ## Expected logs and Windows result
 
 Expected firmware logs:
 
 - `Standalone HID mouse test mode enabled`
+- `USB PHY mapping: USB OTG=GPIO24/25, USB Serial/JTAG=GPIO26/27`
 - `HID device stack ready; waiting for PC enumeration`
 - `PC enumerated USB HID Gateway`
 - `Mouse test report 1 sent` through `Mouse test report 4 sent`
