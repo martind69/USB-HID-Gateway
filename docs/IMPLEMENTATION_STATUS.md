@@ -107,8 +107,20 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 ## Build and verification
 
-The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical enumeration and report delivery still require hardware verification.
+The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical USB Device enumeration is now verified on Type-C 6 / USB1P1. Windows identifies VID/PID 303A:4004 as a HID-compliant mouse and loads hidusb.sys/mouhid.sys. The HID interface exposes Interrupt IN endpoint 0x81 at 1 ms and a 6-byte input report with Report ID 1. Functional cursor/button/wheel behavior remains to be explicitly verified.
 
 Do not mark the USB Device milestone complete until the firmware builds, the correct PHY is assigned to the Type-C 6 connector, Windows enumerates the HID mouse after reconnects, and Type-C 4 / CH343P remains available for programming and logs.
 
 No end-to-end USB Host-to-Device passthrough or G HUB compatibility is claimed.
+
+### Standalone HID mouse — hardware enumeration verified (2026-11-14)
+
+Windows USB Device Tree Viewer confirms the ESP32-P4 enumerates on Type-C 6 / USB1P1 as:
+
+- VID/PID `303A:4004`, product `USB HID Gateway Mouse Test`
+- Full-Speed USB 2.0
+- HID mouse interface, Interrupt IN endpoint `0x81`, 1 ms interval
+- HID report descriptor length 79 bytes; Windows reports a 6-byte input report with Report ID 1
+- Windows HID stack loaded successfully (`hidusb.sys`, `mouhid.sys`)
+
+Enumeration and descriptor parsing are verified. Functional movement and button/wheel event delivery still need an explicit test.
