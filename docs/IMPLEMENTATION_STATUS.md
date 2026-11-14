@@ -39,14 +39,23 @@ Implemented:
 - Disabled USB Host initialization while the isolated mouse test mode is selected.
 - Added HID report descriptor and class request callbacks.
 - Added mount/detach state reporting to runtime diagnostics.
+- Added runtime ESP32-P4 PHY selection with `usb_serial_jtag_ll_phy_select(1)` before TinyUSB installation. This maps USB Serial/JTAG to PHY1 (GPIO26/GPIO27) and USB OTG to PHY0 (GPIO24/GPIO25), matching Type-C 6 / USB1P1.
+- Corrected the TinyUSB HID report submission call to the esp_tinyusb/TinyUSB API signature: `tud_hid_report(report_id, report, len)`.
+- Declared the `esp_hal_usb` component dependency for the PHY-selection HAL header.
 
-The source is aligned with the public esp_tinyusb 3.x configuration model, but it has not yet been built with the project's exact ESP-IDF 6.1 environment. A successful compile is still required before hardware testing.
+The standalone HID mouse mode and TinyUSB stack have compiled in the user's ESP-IDF 6.1 environment. Physical HID enumeration and report delivery are not yet verified.
 
 ### Physical USB PHY mapping
 
-Type-C 6 / USB1P1 is wired to GPIO24/GPIO25, corresponding to FS PHY1. The default ESP32-P4 mapping assigns FS PHY1 to USB Serial/JTAG and FS PHY2 (GPIO27/GPIO26) to USB OTG FS. The `USB_PHY_SEL` eFuse swaps those assignments. The requested Type-C 6 TinyUSB path therefore depends on the current eFuse state and the resulting PHY mapping.
+Type-C 6 / USB1P1 is wired to GPIO24/GPIO25. The firmware now uses the ESP-IDF runtime PHY selector before TinyUSB initialization:
 
-No eFuse has been programmed as part of this work. The exact current value must be read and reviewed before any irreversible change. Type-C 4 / CH343P is a separate UART bridge and remains the intended programming/logging connection.
+```c
+usb_serial_jtag_ll_phy_select(1);
+```
+
+The ESP-IDF implementation enables software PHY mapping and selects USB Serial/JTAG on PHY1 and USB OTG (USB_WRAP) on PHY0. On this board, that routes USB OTG to GPIO24/GPIO25 and USB Serial/JTAG to GPIO26/GPIO27. This is a runtime register setting; it does not program the irreversible `USB_PHY_SEL` eFuse.
+
+Type-C 4 / CH343P remains the separate UART bridge and is the intended programming/logging connection.
 
 See `docs/USB_DEVICE_MOUSE_TEST.md` for the isolated test procedure and expected Windows behavior.
 
@@ -79,8 +88,8 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 ## Integration still pending
 
 - Verify U15 channel-to-signal mapping for both H3 positions on the exact board.
-- Read and review the current `USB_PHY_SEL` eFuse value.
-- Verify that Type-C 6 exposes USB OTG FS on GPIO24/GPIO25 after the PHY assignment is confirmed.
+- Verify that Type-C 6 exposes USB OTG FS on GPIO24/GPIO25 after the runtime PHY selection.
+- Verify that Type-C 4 / CH343P remains available for programming and logs after PHY selection.
 - Build the isolated HID mouse test mode with ESP-IDF 6.1.
 - Verify Windows enumeration and the four HID mouse reports on the physical board.
 - Verify simultaneous USB 2.0 HS Host on Type-A and USB 1.1 FS Device on Type-C 6 after the isolated Device test passes.
@@ -98,7 +107,7 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 ## Build and verification
 
-The USB Device proof of concept and USB Host enumeration diagnostic remain unbuilt/unverified in the current environment. The project owner must run the build and hardware steps in the relevant test documents using ESP-IDF 6.1 and the Waveshare ESP32-P4-Module-DEV-KIT.
+The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical enumeration and report delivery still require hardware verification.
 
 Do not mark the USB Device milestone complete until the firmware builds, the correct PHY is assigned to the Type-C 6 connector, Windows enumerates the HID mouse after reconnects, and Type-C 4 / CH343P remains available for programming and logs.
 
