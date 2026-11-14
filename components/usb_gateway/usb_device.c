@@ -14,6 +14,9 @@
 static const char *TAG = "usb_device";
 static bool s_driver_installed;
 static bool s_was_mounted;
+#if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
+static size_t s_mouse_test_report_index;
+#endif
 
 #define USB_HID_CONFIG_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
 
@@ -136,18 +139,16 @@ static void usb_device_mouse_test_process(void)
 		{ 1, 0, 0, 0, 0 },
 		{ 0, 0, 0, 0, 0 }
 	};
-	static size_t report_index;
-
-	if (report_index >= (sizeof(reports) / sizeof(reports[0])) ||
+	if (s_mouse_test_report_index >= (sizeof(reports) / sizeof(reports[0])) ||
 		!tud_hid_ready()) {
 		return;
 	}
 
-	if (tud_hid_report(0, 1, reports[report_index],
-		sizeof(reports[report_index]))) {
+	if (tud_hid_report(0, 1, reports[s_mouse_test_report_index],
+		sizeof(reports[s_mouse_test_report_index]))) {
 		ESP_LOGI(TAG, "Mouse test report %u sent",
-			(unsigned int)(report_index + 1));
-		report_index++;
+			(unsigned int)(s_mouse_test_report_index + 1));
+		s_mouse_test_report_index++;
 	}
 }
 #endif
@@ -207,6 +208,9 @@ void usb_device_process(void)
 			diagnostics_set_device_state(DIAG_STATE_CONNECTED, ESP_OK);
 		} else {
 			ESP_LOGI(TAG, "PC USB HID connection detached");
+#if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
+			s_mouse_test_report_index = 0;
+#endif
 			diagnostics_set_device_state(DIAG_STATE_READY, ESP_OK);
 		}
 	}
