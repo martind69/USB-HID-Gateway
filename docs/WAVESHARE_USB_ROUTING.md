@@ -1,6 +1,6 @@
 # Waveshare ESP32-P4-Module-DEV-KIT USB routing assessment
 
-Date: 2026-11-13
+Date: 2026-11-14
 
 ## Board identification
 
@@ -68,9 +68,11 @@ The schematic labels U15's signal paths as `USB_N/P` and `USBHSD1_N/P`, with the
 
 ## Firmware implications
 
-The TinyUSB PoC is configured for `TINYUSB_PORT_FULL_SPEED_0` for the separate PC-facing FS OTG Device path. H3/U15 selects the Type-A Host routing and does not select the Type-C 6 USB role.
+The TinyUSB PoC is configured for `TINYUSB_PORT_FULL_SPEED_0`. Type-C 6 is wired to GPIO24/GPIO25, which are FS PHY1 on ESP32-P4. The default PHY assignment is FS PHY1 -> USB Serial/JTAG and FS PHY2 (GPIO27/GPIO26) -> USB OTG FS. The `USB_PHY_SEL` eFuse swaps these assignments: value 1 maps FS PHY1 to USB OTG FS and FS PHY2 to USB Serial/JTAG.
 
-A successful TinyUSB initialization only proves that the stack initialized. It does not prove that Type-C 6 is physically connected to the FS OTG signals. Windows must enumerate the configured TinyUSB VID/PID rather than `303A:1001` before the PC-facing HID path is considered validated.
+This mapping explains why Windows currently sees `303A:1001` on Type-C 6. The target TinyUSB Device path on Type-C 6 requires FS PHY1 to be assigned to USB OTG FS. Do not burn `USB_PHY_SEL` until its current value and boot/download implications have been reviewed. The eFuse is irreversible. Type-C 4 / CH343P is an independent UART bridge and remains the preferred programming/logging path.
+
+A successful TinyUSB initialization only proves that the stack initialized. Windows must enumerate the configured HID Gateway identity rather than `303A:1001` before the PC-facing HID path is considered validated.
 
 ## Required validation sequence
 
@@ -91,8 +93,9 @@ A successful TinyUSB initialization only proves that the stack initialized. It d
 - [x] HOST-position Windows capture recorded: Type-C 6 enumerates as Espressif USB Serial/JTAG `303A:1001`, COM3.
 - [ ] Windows result for the other H3 position recorded and compared.
 - [ ] Exact mapping of U15 channel 1/channel 2 to the USB1–USB3 hub branch versus direct USB4 branch recorded for both H3 states.
-- [ ] USB1P1 direct connection to ESP32-P4 GPIO24/GPIO25 independently validated.
-- [ ] TinyUSB HID enumeration on Type-C 6 verified.
+- [x] USB1P1 direct connection to ESP32-P4 GPIO24/GPIO25 identified from the board schematic.
+- [ ] Current `USB_PHY_SEL` eFuse value read and reviewed.
+- [ ] TinyUSB HID enumeration on Type-C 6 verified after confirming the PHY assignment.
 - [ ] Simultaneous HS Host + FS Device operation verified.
 
 ## Sources
@@ -101,4 +104,5 @@ A successful TinyUSB initialization only proves that the stack initialized. It d
 - Waveshare board documentation: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT
 - Waveshare FAQ: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT/FAQ
 - ESP32-P4 USB Device Stack: https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_device.html
+- ESP32-P4 USB PHY mapping and `USB_PHY_SEL`: https://docs.espressif.com/projects/esp-iot-solution/en/latest/usb/usb_overview/usb_phy.html
 - ESP32-P4 USB Host: https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html
