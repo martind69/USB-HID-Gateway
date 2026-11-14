@@ -77,3 +77,22 @@ Windows should enumerate a HID-compliant mouse interface. The device must not en
 ## Limits
 
 This test proves only the PC-facing Full-Speed USB Device path and basic HID report delivery. It does not prove simultaneous USB Host operation, HID forwarding, Logitech vendor-control compatibility, or the final composite descriptor.
+
+
+## Hardware test result — 2026-11-14
+
+Standalone HID mouse enumeration on the Waveshare ESP32-P4 Module DEV KIT was verified on Type-C 6 / USB1P1.
+
+Observed in Windows USB Device Tree Viewer:
+
+- VID/PID: `303A:4004`
+- Manufacturer: `Waveshare Project`
+- Product: `USB HID Gateway Mouse Test`
+- USB speed: Full-Speed (12 Mbit/s)
+- Interface: HID, Generic Desktop / Mouse
+- Endpoint: `0x81`, Interrupt IN, 64-byte maximum packet size, 1 ms interval
+- HID report descriptor length: 79 bytes
+- Windows loaded `hidusb.sys` and `mouhid.sys`; device appears as a HID-compliant mouse.
+- Windows parsed an input report length of 6 bytes, with Report ID 1, five buttons, relative X/Y, wheel and AC Pan usages.
+
+This confirms physical USB Device enumeration and successful Windows HID descriptor parsing through the selected USB PHY routing. The USB Device path is therefore proven at enumeration level. Actual cursor movement, button press/release and wheel behavior should be recorded as a separate functional test.
