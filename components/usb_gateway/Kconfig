@@ -1,0 +1,11 @@
+menu "USB HID Gateway"
+
+config USB_GATEWAY_USB_DEVICE_MOUSE_TEST
+	bool "Standalone USB Device HID mouse test mode"
+	default n
+	help
+		Expose only a standard HID mouse on the Full-Speed USB Device port.
+		After enumeration, send a short right/left movement and one left click.
+		The USB Host stack is not started in this mode.
+
+endmenu
