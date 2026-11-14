@@ -8,6 +8,7 @@
   "configurePresets": [
     {
       "name": "default",
+      "generator": "Ninja",
       "displayName": "Default (development)",
       "description": "Development configuration",
       "binaryDir": "build/default",

@@ -17,5 +17,15 @@
   ],
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32p4"
+  },
+  "cmake.generator": "Ninja",
+  "cmake.configureArgs": [
+      "-DCMAKE_TOOLCHAIN_FILE=C:/Tools/Espressif/esp-idf/tools/cmake/toolchain-esp32p4.cmake",
+      "-DIDF_TARGET=esp32p4"
+  ],
+  "cmake.configureEnvironment": {
+      "PATH": "C:\\Tools\\Espressif\\tools\\riscv32-esp-elf\\esp-16.1.0_20260609\\riscv32-esp-elf\\bin;C:\\Tools\\Espressif\\tools\\xtensa-esp-elf\\esp-16.1.0_20260609\\xtensa-esp-elf\\bin;%PATH%",
+      "IDF_PATH": "C:\\Tools\\Espressif\\esp-idf",
+      "IDF_TOOLS_PATH": "C:\\Tools\\Espressif"
   }
 }
