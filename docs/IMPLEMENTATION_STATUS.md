@@ -171,3 +171,11 @@ Latest UART capture confirms successful Full-Speed enumeration through the CH334
 This changes the assessment: the failure is intermittent, not a consistent incompatibility of `8564:1000`. Both devices can enumerate through the hub. A static EP0 MPS mismatch between them is not supported; a general Full-Speed hub failure is also ruled out by successful enumerations.
 
 Next: repeat a clearly labelled A/B/A sequence on one CH334F downstream port and correlate each insertion with the UART timestamps. Investigate intermittent hub-port state/reset sequencing and the initial EP0 transfer. If reproduced, instrument the ESP-IDF enumeration control transfer for setup packet, HCD status, actual length, received bytes and timing after reset completion. No firmware timing, PHY, `fsls_only` or hub configuration changes until these measurements are available.
+
+### Hub re-detection after brief contact interruption (2026-11-15)
+
+The user reports that a very brief interruption of the device contacts on the CH334F hub can force a new detection attempt. In the supplied Port3 trace, the initial EP0 transfer fails at 207.970 s, Port3 is disabled while still connected, and the Host reports removal at address 0. After the brief contact interruption, device 8564:1000 successfully enumerates at 212.600 s (Full Speed, EP0_MPS=64, bcdUSB=0x0200, one interface).
+
+This confirms that 8564:1000 can enumerate through the CH334F; a fixed device/hub incompatibility is ruled out. The 4.63 s is the interval between the logged failure and success, not the duration of the physical interruption. The observation shifts the leading hypothesis toward connection detection, port-state recovery, debounce/reset sequencing or retry behavior around the initial EP0 transfer. The excerpt does not establish which contact was interrupted or whether success followed a fresh hub connect event or an internal retry.
+
+No Host firmware timing, PHY, fsls_only or hub configuration changes are justified yet. Next capture should timestamp the physical interruption and correlate hub port status/change bits, disconnect/connect, reset start/completion, port enable and the first GET_DESCRIPTOR(Device) SETUP. Do not intentionally short connector contacts.
