@@ -243,3 +243,57 @@ Reference: WCH CH334/CH335 datasheet, especially overview, CH334F pinout, PSELF 
 - [ESP-IDF ESP32-P4 USB Host documentation](https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html)
 - [Espressif USB Host Library source](https://github.com/espressif/esp-usb/blob/master/host/usb/include/usb/usb_host.h)
 - [ESP Component Registry: espressif/usb 1.6.1](https://components.espressif.com/components/espressif/usb/versions/1.6.0)
+
+
+## Device-dependent Full-Speed enumeration comparison (2026-11-15)
+
+A new positive result changes the fault assessment:
+
+- Device `090C:1000` successfully enumerated through the CH334F at Full Speed.
+- Device `8564:1000` previously failed at the initial child-device EP0 transfer (`CHECK_SHORT_DEV_DESC`) through the CH334F, while it successfully enumerated directly at J8 / USBHSD1.
+- Both are reported as Full-Speed devices. A general CH334F Full-Speed forwarding failure and a purely Low-Speed-specific problem are therefore unlikely. The remaining possibilities include EP0 descriptor/packetization differences, device response timing, electrical margin, or a device-specific hub/host interaction.
+
+The application now logs EP0 maximum packet size and USB revision for devices that complete enumeration:
+
+```text
+USB device addr=<n> VID=<vid> PID=<pid> speed=FS EP0_MPS=<n> bcdUSB=0x<xxxx> configuration=<n>
+```
+
+**Important limitation:** This log is emitted only after enumeration completes and `USB_HOST_CLIENT_EVENT_NEW_DEV` is delivered. It cannot report `bMaxPacketSize0` for a device that fails during the initial 8-byte descriptor request. The initial payload and low-level transfer completion must be captured inside the enumeration driver/HCD or with a USB protocol analyzer.
+
+### Controlled A/B/A test
+
+Use the same CH334F downstream connector, same cable-free setup, unchanged firmware and the same board power-cycle procedure:
+
+| Test | Device | Known result |
+|---|---|---|
+| A | `090C:1000` | Successful Full-Speed enumeration through CH334F |
+| B | `8564:1000` | Previously failed at `CHECK_SHORT_DEV_DESC` through CH334F |
+| C | `090C:1000` | Repeat A after B to detect order/state dependence |
+| D | `8564:1000` | Direct at J8 / USBHSD1 as positive control |
+
+For each run, capture the complete UART log from before insertion until success/failure. Record the physical downstream port, insertion order and whether the board was power-cycled between devices. Do not change H3, `fsls_only`, PHY selection, reset delays or hub configuration.
+
+### Values to compare
+
+For successful enumeration of `090C:1000`, record `bMaxPacketSize0` (logged as `EP0_MPS`), `bcdUSB`, speed, VID/PID and configuration interface count.
+
+For failed enumeration of `8564:1000`, the application cannot see the descriptor bytes. To compare the first EP0 transaction, capture or instrument:
+
+- Setup packet: `bmRequestType=0x80`, `bRequest=0x06` (GET_DESCRIPTOR), `wValue=0x0100` (Device Descriptor), `wIndex=0`, `wLength=8`.
+- Transfer completion status and actual received data length.
+- The eight returned descriptor bytes, if any.
+- Whether the device responds with DATA, NAK, STALL or no response.
+- Timing from downstream reset completion / port enable to the first SETUP token.
+
+Do not infer a `bMaxPacketSize0` mismatch from `CHECK_SHORT_DEV_DESC` alone. The state name does not prove that a short descriptor was received. A status-1 transfer error does not expose the actual descriptor contents.
+
+### Interpretation
+
+- If both devices report the same EP0 MPS on direct connection but only one fails behind the hub, investigate response timing, electrical signal margin and hub/host interaction before changing EP0 sizing.
+- If the initial 8-byte response from `8564:1000` is absent or corrupted only behind the CH334F, inspect downstream D+/D- and hub forwarding.
+- If the failure follows the device even on direct J8, investigate device behavior or the Host controller path rather than attributing it to the CH334F.
+- If A succeeds, B fails, then C succeeds without a power cycle, investigate hub-port/device state recovery and order-dependent behavior.
+- Do not patch the enumeration driver to accept a failed descriptor transfer or guess an EP0 packet size.
+
+If UART logs remain insufficient, the next firmware-level step is temporary instrumentation in the ESP-IDF enumeration path around the initial short Device Descriptor control transfer. Keep this instrumentation diagnostic until the exact completion status, actual length and returned bytes are known.
