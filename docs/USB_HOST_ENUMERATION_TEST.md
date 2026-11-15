@@ -16,9 +16,9 @@ The firmware:
 
 ## Board routing required for this test
 
-**Do not assume an H3 position from the previous routing description.** The earlier statement that H3=Host is the verified route for USB1–USB3 has been withdrawn: physical testing has shown hub-port activity on USB1–USB3 with H3=Device, while the earlier H3=Host test successfully enumerated the stick only on USB3. The complete U15-to-U14/J8 net mapping is still under investigation.
+**Do not assume an H3 position from the previous routing description.** The earlier statement that H3=Host is the verified route for USB1–USB3 has been withdrawn: physical testing has shown hub-port activity on USB1–USB3 with H3=Device, while the corrected H3=Host test successfully enumerated the stick only on USB4. The complete U15-to-U14/J8 net mapping is still under investigation.
 
-USB4 is only a test point (TP), not a normal USB-A receptacle.
+The user has reported successful USB-stick enumeration at the location designated USB4. Verify its physical connector designation against the exact board revision; do not assume it is only a test point.
 
 ## Build configuration
 
@@ -94,7 +94,7 @@ Expected Logitech identities from the existing captures:
 - G815 DE: `046D:C33F`
 - G502 HERO: `046D:C08B`
 
-J8 / USBHSD1 is the alternate U15 Device-mode branch and is not used in this Host-mode test. USB4 is a test point, not a socket.
+J8 / USBHSD1 is an alternate U15 branch according to the schematic interpretation; its relation to observed hub-port activity remains unresolved. USB4 is the working port in the corrected H3=Host test; verify its exact physical connector designation.
 
 ## Expected serial output
 
@@ -152,13 +152,13 @@ I (97900) usb_host: USB configuration addr=1 interfaces=1 attributes=0x80
 I (97900) gateway_diag: Host device + addr=1 VID:PID=8564:1000 manufacturer='' product='' interfaces=1 HID=0
 ```
 
-The USB Host diagnostic reported `ready`, one device and zero errors. VID:PID `8564:1000` was enumerated at Full Speed with one configuration interface. This proves that the Host controller and at least one path to a CH334F downstream port (USB3) work for this device in the recorded H3=Host test. It does not establish the complete H3/U15 routing.
+The USB Host diagnostic reported `ready`, one device and zero errors. VID:PID `8564:1000` was enumerated at Full Speed with one configuration interface. This proves that the Host controller and at least one path to the active hub/port path identified as USB4 work for this device in the corrected H3=Host test. It does not establish the complete H3/U15 routing.
 
 USB1 and USB2 are not yet diagnosed. The current log does not establish whether those ports lack VBUS, have a connector/data-line issue, or whether the hub reports a port-connect event that fails later in enumeration. Do not attribute the failure to a specific component until per-port VBUS and hub-port status are checked.
 
 ### Follow-up isolation procedure
 
-1. Use the same USB stick, with no extension cable, and repeat USB3 as the positive control.
+1. Use the same USB stick, with no extension cable, and repeat USB4 as the positive control.
 2. With the board powered and H3 unchanged in Host mode, move that same stick directly to USB1, wait several seconds, then USB2.
 3. Repeat with the stick inserted before board power-up to distinguish hot-plug detection from cold-start behavior.
 4. Measure VBUS between each USB-A port's 5 V and GND contacts. Compare USB1/USB2 against the working USB3 under load; do not short adjacent contacts or inject external 5 V.
