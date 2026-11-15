@@ -23,7 +23,7 @@ This is an enumeration-only diagnostic. It does not claim HID interfaces, retrie
 
 ### USB Host enumeration test preparation (2026-11-15)
 
-- Added explicit startup instructions identifying H3 Host and USB1–USB3 as the test route.
+- Added startup instructions for USB Host enumeration; the H3-to-port route is now explicitly marked as under investigation.
 - Enabled USB Host client notifications for devices removed without an opened client handle.
 - Added removal-event logging and cleanup of pending, unopened device slots.
 - Set the standalone HID mouse test option to disabled in `sdkconfig.defaults`, so a fresh/default build starts the USB Host path.
@@ -112,7 +112,7 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 - Verify that Type-C 6 exposes USB OTG FS on GPIO24/GPIO25 after the runtime PHY selection.
 - Verify that Type-C 4 / CH343P remains available for programming and logs after PHY selection.
 - Verify simultaneous USB 2.0 HS Host on USB1–USB3 via U14/CH334F and USB 1.1 FS Device on Type-C 6 after the isolated Device test passes.
-- Test Host enumeration independently on USB1, USB2 and USB3 with H3 set to Host.
+- Reconcile H3/U15 signal routing against the full schematic and continuity measurements; then test Host enumeration independently on USB1, USB2 and USB3 in the verified selector position.
 - HID Host interface discovery/claiming, report descriptor retrieval and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
 - Generic HID 1.1 parser and parser-populated mapping metadata.
