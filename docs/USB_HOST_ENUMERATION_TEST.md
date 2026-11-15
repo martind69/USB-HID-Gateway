@@ -127,6 +127,40 @@ The USB-A host ports must provide valid 5 V VBUS to the attached device/hub. If 
 - [ ] G815 and G502 enumerate through the actual USB1–USB3 hub topology.
 - [ ] PC-facing TinyUSB Device remains operational at the same time.
 
+## Hardware test result (2026-11-15)
+
+First USB-A port test with H3 in Host mode:
+
+| Physical port | Result |
+|---|---|
+| USB1 | No successful enumeration observed |
+| USB2 | No successful enumeration observed |
+| USB3 | Successful enumeration |
+
+USB3 UART output:
+
+```text
+I (97890) usb_host: Device enumerated, address=1
+I (97890) usb_host: USB device addr=1 VID=8564 PID=1000 speed=FS configuration=1
+I (97900) usb_host: USB configuration addr=1 interfaces=1 attributes=0x80
+I (97900) gateway_diag: Host device + addr=1 VID:PID=8564:1000 manufacturer='' product='' interfaces=1 HID=0
+```
+
+The USB Host diagnostic reported `ready`, one device and zero errors. VID:PID `8564:1000` was enumerated at Full Speed with one configuration interface. This proves that the Host controller, H3 Host routing, U15-to-U14 upstream path and at least one CH334F downstream port (USB3) work for this device.
+
+USB1 and USB2 are not yet diagnosed. The current log does not establish whether those ports lack VBUS, have a connector/data-line issue, or whether the hub reports a port-connect event that fails later in enumeration. Do not attribute the failure to a specific component until per-port VBUS and hub-port status are checked.
+
+### Follow-up isolation procedure
+
+1. Use the same USB stick, with no extension cable, and repeat USB3 as the positive control.
+2. With the board powered and H3 unchanged in Host mode, move that same stick directly to USB1, wait several seconds, then USB2.
+3. Repeat with the stick inserted before board power-up to distinguish hot-plug detection from cold-start behavior.
+4. Measure VBUS between each USB-A port's 5 V and GND contacts. Compare USB1/USB2 against the working USB3 under load; do not short adjacent contacts or inject external 5 V.
+5. If VBUS is present and stable, inspect the CH334F downstream port routing/connector soldering and capture the full boot and attach log for each port.
+6. Record whether the host emits any hub-port connect, reset, enable or disconnect event for USB1/USB2. The current application-level log only reports successfully enumerated child devices and does not yet expose all hub-port state transitions.
+
+Do not change USB Host firmware or mux routing solely on the basis of this first port comparison. USB3 is a proven positive control.
+
 ## Not implemented in this milestone
 
 - USB Mass Storage Class driver and volume mounting.
