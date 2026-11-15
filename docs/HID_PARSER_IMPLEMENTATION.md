@@ -9,7 +9,9 @@ Status: bounded caller-owned per-interface descriptor contexts implemented; inte
 - Global Usage Page, Logical Minimum, Report Size, Report ID and Report Count handling.
 - Bounded Global Push/Pop and Collection nesting validation.
 - Separate report cursors for Input, Output and Feature reports, keyed by Report ID.
-- Field metadata for Usage, Usage ranges, bit offset/width, report count, Variable/Array, Relative/Absolute and Constant flags.
+- Field metadata for Usage, Usage ranges, bit offset/width, report count, logical range, Variable/Array, Relative/Absolute and Constant flags.
+- Top-level Application collection Usage Page/Usage for basic keyboard/mouse classification.
+- Bounds-checked little-endian bit extraction with signed-field extension.
 - Explicit errors for malformed items, invalid Report IDs, unsupported item encoding, capacity overflow, stack underflow/overflow and collection imbalance.
 - No heap allocation; fixed parser storage.
 
