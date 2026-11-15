@@ -325,7 +325,7 @@ void usb_host_init(void)
 
 	diagnostics_set_host_state(DIAG_STATE_READY, ESP_OK);
 	ESP_LOGI(TAG,
-		"USB Host diagnostic ready; verify the confirmed board selector setting; enumeration only");
+		"USB Host HID ingress ready; raw report forwarding to the PC is not yet connected");
 	ESP_LOGI(TAG,
 		"USB Host controller: HS OTG operating FS/LS-only for hub compatibility");
 }
