@@ -50,6 +50,8 @@ static hid_parser_field_t s_fields[HID_PARSER_MAX_FIELDS];
 static size_t s_field_count;
 static hid_report_cursor_t s_cursors[HID_PARSER_MAX_REPORTS];
 static size_t s_cursor_count;
+static bool s_has_report_ids;
+static bool s_has_unnumbered_reports;
 
 static uint32_t read_unsigned(const uint8_t *data, uint8_t size)
 {
@@ -102,7 +104,6 @@ static hid_parser_result_t get_report_cursor(
 	s_cursors[i].report_id = report_id;
 	s_reports[i].type = type;
 	s_reports[i].report_id = report_id;
-	s_reports[i].field_first = (uint16_t)s_field_count;
 	s_report_count = s_cursor_count;
 	*cursor = &s_cursors[i];
 	*report = &s_reports[i];
@@ -115,6 +116,8 @@ bool hid_parser_init(void)
 	s_report_count = 0U;
 	s_field_count = 0U;
 	s_cursor_count = 0U;
+	s_has_report_ids = false;
+	s_has_unnumbered_reports = false;
 	memset(s_reports, 0, sizeof(s_reports));
 	memset(s_fields, 0, sizeof(s_fields));
 	memset(s_cursors, 0, sizeof(s_cursors));
@@ -273,13 +276,21 @@ hid_parser_result_t hid_parser_parse_report(
 				uint64_t bit_count;
 				hid_parser_field_t *field;
 
-				if (global.report_size == 0U ||
+				if ((global.report_id != 0U && s_has_unnumbered_reports) ||
+					(global.report_id == 0U && s_has_report_ids)) {
+					result = HID_PARSER_ERR_REPORT_ID_MIX;
+				} else if (global.report_size == 0U ||
 					global.report_count == 0U ||
 					global.report_size > 32U ||
 					global.report_count > 1024U) {
 					result = HID_PARSER_ERR_MALFORMED;
 				} else if ((result = get_report_cursor(type,
 					global.report_id, &cursor, &report)) == HID_PARSER_OK) {
+					if (global.report_id != 0U) {
+						s_has_report_ids = true;
+					} else {
+						s_has_unnumbered_reports = true;
+					}
 					bit_count = (uint64_t)global.report_size *
 						global.report_count;
 					if (bit_count > UINT16_MAX ||
