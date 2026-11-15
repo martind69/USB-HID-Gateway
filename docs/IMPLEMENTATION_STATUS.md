@@ -33,14 +33,15 @@ The source has not yet been compiled in the user's ESP-IDF environment after the
 
 ### Board routing clarified (2026-11-15)
 
-The Waveshare ESP32-P4-Module-DEV-KIT schematic truth table, confirmed by the user, defines the U15 (FSUSB42UMX) routing:
+The previous interpretation of the U15/H3 schematic truth table as proving the complete USB1–USB3 routing was incorrect or incomplete and is withdrawn pending net-level verification.
 
-- H3 = Host: U15 routes USB DM/DP to U14, the CH334F hub. This is the required setting for USB1–USB3 Host inputs.
-- H3 = Device: U15 routes USB DM/DP to J8, USBHSD1_N / USBHSD1_P.
-- USB4 is only a test point (TP), not a normal receptacle.
-- J8 / USBHSD1 is not selected in H3 Host mode and is not used for the USB1–USB3 Host test.
+Physical observations (2026-11-15):
+- H3=Host: USB3 successfully enumerated the test stick; USB1 and USB2 did not successfully enumerate.
+- H3=Device: the Host stack reported activity on downstream Port1, Port2 and Port3; Port4 remained inactive.
+- In H3=Device mode, Port1 and Port2 failed at the short Device Descriptor control transfer (`CHECK_SHORT_DEV_DESC FAILED`) and were disabled while still connected. This is not successful enumeration.
+- USB4 remains a test point (TP), not a normal receptacle.
 
-The firmware Host diagnostic must be tested with H3 in Host mode. The routing truth table is documented in `docs/WAVESHARE_USB_ROUTING.md`.
+The exact H3/U15-to-U14/J8 signal routing must be checked against the complete schematic nets and physical continuity before declaring either H3 position the correct USB1–USB3 Host setting. See `docs/WAVESHARE_USB_ROUTING.md` and `docs/USB_HOST_ENUMERATION_TEST.md`.
 
 ## PC-facing USB HID Device proof of concept
 
