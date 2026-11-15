@@ -6,6 +6,7 @@
 
 #include "diagnostics.h"
 #include "esp_err.h"
+#include "esp_timer.h"
 #include "esp_log.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
@@ -17,6 +18,7 @@ static bool s_driver_installed;
 static bool s_was_mounted;
 #if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 static size_t s_mouse_test_report_index;
+static int64_t s_mouse_test_next_report_us;
 #endif
 
 #define USB_HID_CONFIG_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
@@ -134,6 +136,8 @@ void tud_hid_set_report_cb(
 #if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 static void usb_device_mouse_test_process(void)
 {
+	const int64_t now_us = esp_timer_get_time();
+
 	static const int8_t reports[][5] = {
 		{ 0, 24, 0, 0, 0 },
 		{ 0, -24, 0, 0, 0 },
@@ -141,7 +145,7 @@ static void usb_device_mouse_test_process(void)
 		{ 0, 0, 0, 0, 0 }
 	};
 	if (s_mouse_test_report_index >= (sizeof(reports) / sizeof(reports[0])) ||
-		!tud_hid_ready()) {
+		now_us < s_mouse_test_next_report_us || !tud_hid_ready()) {
 		return;
 	}
 
@@ -150,6 +154,7 @@ static void usb_device_mouse_test_process(void)
 		ESP_LOGI(TAG, "Mouse test report %u sent",
 			(unsigned int)(s_mouse_test_report_index + 1));
 		s_mouse_test_report_index++;
+		s_mouse_test_next_report_us = now_us + 500000;
 	}
 }
 #endif
@@ -216,6 +221,7 @@ void usb_device_process(void)
 			ESP_LOGI(TAG, "PC USB HID connection detached");
 #if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 			s_mouse_test_report_index = 0;
+			s_mouse_test_next_report_us = 0;
 #endif
 			diagnostics_set_device_state(DIAG_STATE_READY, ESP_OK);
 		}
