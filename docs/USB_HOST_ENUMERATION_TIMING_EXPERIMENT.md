@@ -65,3 +65,29 @@ If this broad state-machine delay changes the failure rate, the next refinement 
 
 - ESP-IDF issue IDFGH-16845: https://github.com/espressif/esp-idf/issues/17918
 - USB Host component v1.6.1 changelog: https://components.espressif.com/components/espressif/usb/versions/1.6.1/changelog
+
+
+## Hardware result: no improvement with 10–50 ms (2026-11-15)
+
+The user tested additional enumeration-stage delays from 10 ms through 50 ms. The observed behavior did not change.
+
+Conclusion:
+- The broad delay before each `set_next_stage()` transition does not resolve the intermittent initial EP0 failure in the tested range.
+- This weakens the hypothesis that simply adding general time between enumeration stages is sufficient.
+- It does not exclude a timing issue at a narrower event boundary, such as hub port reset completion, port enable/change handling, or the first SETUP token.
+- Do not increase the global delay further. The experiment is considered negative.
+
+The project default and Kconfig default are therefore set to **0 ms**. The optional patch remains available for controlled diagnostics but is disabled unless explicitly selected. No reset-recovery, reset-hold, debounce, PHY, `fsls_only`, or hub configuration change is indicated by this result.
+
+## Next diagnostic step
+
+Stop changing delays and capture the actual first EP0 transaction and hub-port state sequence. Instrument the managed USB Host source at the boundary where the external hub reports reset completion/port enable and where the initial 8-byte `GET_DESCRIPTOR(Device)` control transfer is submitted/completed.
+
+Record, with a common monotonic timestamp:
+- Hub port status and change bits before and after reset.
+- Connect, disconnect, reset-start, reset-complete and port-enable events.
+- The exact SETUP packet (expected: standard IN, device recipient, GET_DESCRIPTOR, Device descriptor, index 0, length 8).
+- HCD/transfer completion status, actual received length and the eight returned descriptor bytes.
+- Channel/endpoint error details, retry count and elapsed time from port-enable to SETUP and from SETUP to completion.
+
+The critical distinction is whether the first request is issued before the child has reached a stable enabled state, or whether the request is correctly issued but the response is lost/corrupted on the CH334F downstream path. If available, a USB protocol analyzer or oscilloscope capture of D+/D- at the CH334F port during reset release and the first control transfer will distinguish firmware sequencing from electrical signaling far more directly than another global delay.
