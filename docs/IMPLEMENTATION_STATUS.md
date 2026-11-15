@@ -2,6 +2,10 @@
 
 Date: 2026-11-15
 
+## Current work focus
+
+The intermittent initial EP0 enumeration issue is parked at the user's request while external electrical measurements are performed. Do not make further firmware timing, PHY, hub, reset or enumeration-state changes until the user returns with measurement results. Development focus has moved to HID keyboard/mouse report passthrough.
+
 ## USB Host enumeration diagnostic
 
 Files:
@@ -227,4 +231,4 @@ The user tested enumeration-stage delays from 10 ms through 50 ms. No change in 
 - Retained the optional Kconfig control and idempotent patch helper for future targeted testing.
 - No reset-hold, reset-recovery, debounce, PHY, `fsls_only`, hub configuration or board routing changes were made.
 
-Next: instrument hub port status/change bits, reset completion and port enable, plus the first 8-byte `GET_DESCRIPTOR(Device)` control transfer. Capture the SETUP packet, HCD status, actual length, received descriptor bytes, channel errors and monotonic timestamps. If possible, correlate with a D+/D- capture at the CH334F downstream port. The current evidence does not justify further global delay changes.
+Parked pending the user's electrical measurements. When resumed, instrument hub port status/change bits, reset completion and port enable, plus the first 8-byte `GET_DESCRIPTOR(Device)` control transfer. Capture the SETUP packet, HCD status, actual length, received descriptor bytes, channel errors and monotonic timestamps. If possible, correlate with a D+/D- capture at the CH334F downstream port. The current evidence does not justify further global delay changes.
