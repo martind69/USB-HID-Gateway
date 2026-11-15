@@ -15,6 +15,8 @@
 #include "hal/usb_serial_jtag_ll.h"
 
 static const char *TAG = "usb_device";
+static bool s_driver_installed;
+static bool s_was_mounted;
 
 static bool usb_device_forward_hid_report(
 	uint8_t report_id,
@@ -31,8 +33,6 @@ static bool usb_device_forward_hid_report(
 	return tud_hid_report(report_id, payload, (uint16_t)payload_length);
 }
 
-static bool s_driver_installed;
-static bool s_was_mounted;
 #if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 static size_t s_mouse_test_report_index;
 static int64_t s_mouse_test_next_report_us;
@@ -234,7 +234,7 @@ void usb_device_init(void)
 		return;
 	}
 
- 	s_driver_installed = true;
+	s_driver_installed = true;
 	s_was_mounted = false;
 	hid_proxy_set_output_callback(usb_device_forward_hid_report, NULL);
 	diagnostics_set_device_state(DIAG_STATE_READY, ESP_OK);
