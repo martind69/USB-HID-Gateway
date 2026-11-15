@@ -90,6 +90,14 @@ static void usb_host_client_event_cb(
 	case USB_HOST_CLIENT_EVENT_DEV_REMOVED:
 		ESP_LOGI(TAG, "Device removed, address=%u",
 			(unsigned int)event->dev_removed.address);
+		if (event->dev_removed.address < USB_HOST_MAX_DEVICE_ADDRESS) {
+			usb_host_device_slot_t *slot =
+				&s_devices[event->dev_removed.address];
+
+			if (!slot->opened) {
+				memset(slot, 0, sizeof(*slot));
+			}
+		}
 		break;
 
 	case USB_HOST_CLIENT_EVENT_DEV_SUSPENDED:
@@ -217,6 +225,9 @@ static void usb_host_client_task(void *arg)
 	const usb_host_client_config_t client_config = {
 		.is_synchronous = false,
 		.max_num_event_msg = USB_HOST_CLIENT_EVENT_QUEUE_SIZE,
+		.flags = {
+			.notify_dev_removed = 1
+		},
 		.async = {
 			.client_event_callback = usb_host_client_event_cb,
 			.callback_arg = NULL
@@ -299,7 +310,9 @@ void usb_host_init(void)
 
 	diagnostics_set_host_state(DIAG_STATE_READY, ESP_OK);
 	ESP_LOGI(TAG,
-		"USB Host stack installed on HS OTG in FS/LS-only mode; waiting for USB devices");
+		"USB Host diagnostic ready: H3=HOST, use USB1-USB3; enumeration only");
+	ESP_LOGI(TAG,
+		"USB Host controller: HS OTG operating FS/LS-only for hub compatibility");
 }
 
 void usb_host_process(void)
