@@ -50,6 +50,8 @@ typedef struct {
 	uint16_t bit_offset;
 	uint16_t bit_size;
 	uint16_t report_count;
+	int32_t logical_min;
+	int32_t logical_max;
 	uint32_t main_flags;
 	bool is_array;
 	bool is_relative;
@@ -73,6 +75,8 @@ typedef struct {
 	size_t cursor_count;
 	bool has_report_ids;
 	bool has_unnumbered_reports;
+	uint16_t top_level_usage_page;
+	uint16_t top_level_usage;
 } hid_parser_context_t;
 
 void hid_parser_init(hid_parser_context_t *context);
@@ -91,6 +95,12 @@ const hid_parser_field_t *hid_parser_get_field(
 const uint8_t *hid_parser_get_descriptor(
 	const hid_parser_context_t *context,
 	size_t *length);
+bool hid_parser_read_field_value(
+	const hid_parser_field_t *field,
+	const uint8_t *payload,
+	size_t payload_length,
+	uint16_t element_index,
+	int32_t *value);
 
 #ifdef __cplusplus
 }
