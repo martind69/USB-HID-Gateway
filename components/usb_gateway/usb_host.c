@@ -148,12 +148,14 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
 	}
 
 	ESP_LOGI(TAG,
-		"USB device addr=%u VID=%04X PID=%04X speed=%s configuration=%u",
+		"USB device addr=%u VID=%04X PID=%04X speed=%s EP0_MPS=%u bcdUSB=0x%04X configuration=%u",
 		(unsigned int)slot->address,
 		(unsigned int)device_desc->idVendor,
 		(unsigned int)device_desc->idProduct,
 		(info.speed == USB_SPEED_HIGH) ? "HS" :
 		(info.speed == USB_SPEED_FULL) ? "FS" : "LS",
+		(unsigned int)device_desc->bMaxPacketSize0,
+		(unsigned int)device_desc->bcdUSB,
 		(unsigned int)info.bConfigurationValue);
 
 	result = usb_host_get_active_config_descriptor(slot->handle,
