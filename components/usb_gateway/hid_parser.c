@@ -117,14 +117,17 @@ hid_parser_result_t hid_parser_parse_report(
 	size_t offset = 0U;
 	hid_parser_result_t result = HID_PARSER_OK;
 
-	if (context == NULL || descriptor == NULL || length == 0U) {
+	if (context == NULL) {
+		return HID_PARSER_ERR_ARGUMENT;
+	}
+	hid_parser_init(context);
+	if (descriptor == NULL || length == 0U) {
 		return HID_PARSER_ERR_ARGUMENT;
 	}
 	if (length > HID_PARSER_MAX_DESCRIPTOR_SIZE) {
 		return HID_PARSER_ERR_DESCRIPTOR_SIZE;
 	}
 
-	hid_parser_init(context);
 	memcpy(context->descriptor, descriptor, length);
 	context->descriptor_length = length;
 
