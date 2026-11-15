@@ -53,6 +53,8 @@ int main(void)
 	assert(report != NULL && report->type == HID_REPORT_TYPE_OUTPUT);
 	assert(report->payload_bits == 8U && report->payload_bytes == 1U);
 	report = hid_parser_get_report(&mouse_context, 0U);
+	assert(mouse_context.top_level_usage_page == 0x01U);
+	assert(mouse_context.top_level_usage == 0x02U);
 	assert(report != NULL && report->payload_bits == 24U);
 	assert(report->payload_bytes == 3U);
 
@@ -60,6 +62,13 @@ int main(void)
 	assert(field != NULL && field->usage_page == 0x07U);
 	assert(field->bit_offset == 0U && field->bit_size == 1U);
 	assert(field->report_count == 8U && !field->is_array);
+	{
+		static const uint8_t modifier_byte[] = { 0x04 };
+		int32_t field_value = 0;
+		assert(hid_parser_read_field_value(field, modifier_byte,
+			sizeof(modifier_byte), 2U, &field_value));
+		assert(field_value == 1);
+	}
 	assert(hid_parser_get_descriptor(&keyboard_context,
 		&descriptor_length) != NULL);
 	assert(descriptor_length == sizeof(keyboard_descriptor));
