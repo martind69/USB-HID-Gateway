@@ -11,6 +11,9 @@ extern "C" {
 #define HID_PARSER_MAX_DESCRIPTOR_SIZE 1024U
 #define HID_PARSER_MAX_REPORTS 24U
 #define HID_PARSER_MAX_FIELDS 64U
+#define HID_PARSER_GLOBAL_STACK_DEPTH 4U
+#define HID_PARSER_COLLECTION_DEPTH 8U
+#define HID_PARSER_LOCAL_USAGE_CAPACITY 64U
 
 typedef enum {
 	HID_REPORT_TYPE_INPUT = 0,
@@ -53,15 +56,41 @@ typedef struct {
 	bool is_constant;
 } hid_parser_field_t;
 
-bool hid_parser_init(void);
+typedef struct {
+	uint32_t bit_count;
+	uint8_t report_id;
+} hid_parser_report_cursor_t;
+
+/* One caller-owned context is required for each active HID interface. */
+typedef struct {
+	uint8_t descriptor[HID_PARSER_MAX_DESCRIPTOR_SIZE];
+	size_t descriptor_length;
+	hid_parser_report_t reports[HID_PARSER_MAX_REPORTS];
+	size_t report_count;
+	hid_parser_field_t fields[HID_PARSER_MAX_FIELDS];
+	size_t field_count;
+	hid_parser_report_cursor_t cursors[HID_PARSER_MAX_REPORTS];
+	size_t cursor_count;
+	bool has_report_ids;
+	bool has_unnumbered_reports;
+} hid_parser_context_t;
+
+void hid_parser_init(hid_parser_context_t *context);
 hid_parser_result_t hid_parser_parse_report(
+	hid_parser_context_t *context,
 	const uint8_t *descriptor,
 	size_t length);
-size_t hid_parser_get_report_count(void);
-const hid_parser_report_t *hid_parser_get_report(size_t index);
-size_t hid_parser_get_field_count(void);
-const hid_parser_field_t *hid_parser_get_field(size_t index);
-const uint8_t *hid_parser_get_descriptor(size_t *length);
+size_t hid_parser_get_report_count(const hid_parser_context_t *context);
+const hid_parser_report_t *hid_parser_get_report(
+	const hid_parser_context_t *context,
+	size_t index);
+size_t hid_parser_get_field_count(const hid_parser_context_t *context);
+const hid_parser_field_t *hid_parser_get_field(
+	const hid_parser_context_t *context,
+	size_t index);
+const uint8_t *hid_parser_get_descriptor(
+	const hid_parser_context_t *context,
+	size_t *length);
 
 #ifdef __cplusplus
 }
