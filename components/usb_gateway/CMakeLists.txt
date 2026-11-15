@@ -2,6 +2,7 @@ idf_component_register(
 	SRCS
 		"usb_gateway.c"
 		"usb_host.c"
+		"usb_host_hid.c"
 		"usb_device.c"
 		"hid_parser.c"
 		"hid_proxy.c"
