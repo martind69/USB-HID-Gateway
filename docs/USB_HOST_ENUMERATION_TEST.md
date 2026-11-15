@@ -297,3 +297,24 @@ Do not infer a `bMaxPacketSize0` mismatch from `CHECK_SHORT_DEV_DESC` alone. The
 - Do not patch the enumeration driver to accept a failed descriptor transfer or guess an EP0 packet size.
 
 If UART logs remain insufficient, the next firmware-level step is temporary instrumentation in the ESP-IDF enumeration path around the initial short Device Descriptor control transfer. Keep this instrumentation diagnostic until the exact completion status, actual length and returned bytes are known.
+
+## Intermittent enumeration and EP0 comparison log (2026-11-15)
+
+The latest UART capture demonstrates that both previously discussed Full-Speed devices can successfully enumerate through the CH334F:
+
+- `090C:1000`: successful at address 2, then a later enumeration attempt failed at `CHECK_SHORT_DEV_DESC`, then successful again at address 3.
+- `8564:1000`: successful at address 4.
+- Both successful enumerations report `speed=FS`, `EP0_MPS=64`, `configuration=1`, one interface.
+- `bcdUSB` differs: `0x0210` for `090C:1000`, `0x0200` for `8564:1000`.
+
+This supersedes the earlier assumption that `8564:1000` consistently fails behind the CH334F. The failure is intermittent in the supplied capture, and both devices are demonstrably capable of successful enumeration through the hub. A general Full-Speed hub forwarding failure, a Low-Speed-only issue, and an EP0 maximum-packet-size mismatch between these two devices are not supported by this evidence.
+
+The `Device removed` messages at addresses 2, 3 and 4 are normal for the observed detach events. The failed attempt is reported at address 0 because it did not complete enumeration and receive an address. `USB Host has released all device resources` indicates cleanup after detach; it is not itself an enumeration failure.
+
+### Remaining diagnostic question
+
+The capture does not unambiguously label which physical device was connected at the exact time of the failed attempt at 23.940 s. Future captures must annotate each insertion/removal with the device VID/PID or a manual timestamp marker. Repeat a controlled sequence on the same downstream port: `090C:1000` (A), `8564:1000` (B), `090C:1000` (A), with the complete UART log and explicit device identity for every insertion.
+
+Because a failure occurred between successful enumerations, prioritize intermittent port/hub state, reset/enable sequencing, connection debounce, and transfer-level timing over static descriptor differences. Do not change reset delays or hub/PHY settings yet.
+
+The application-level `EP0_MPS` and `bcdUSB` fields are available only after successful enumeration. To diagnose the failed attempt, instrument the initial enumeration control transfer in ESP-IDF to record setup request, HCD transfer status, actual received length, returned bytes and timing relative to port reset completion. `CHECK_SHORT_DEV_DESC` alone does not establish that a short descriptor was actually received.
