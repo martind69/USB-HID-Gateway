@@ -318,3 +318,47 @@ The capture does not unambiguously label which physical device was connected at 
 Because a failure occurred between successful enumerations, prioritize intermittent port/hub state, reset/enable sequencing, connection debounce, and transfer-level timing over static descriptor differences. Do not change reset delays or hub/PHY settings yet.
 
 The application-level `EP0_MPS` and `bcdUSB` fields are available only after successful enumeration. To diagnose the failed attempt, instrument the initial enumeration control transfer in ESP-IDF to record setup request, HCD transfer status, actual received length, returned bytes and timing relative to port reset completion. `CHECK_SHORT_DEV_DESC` alone does not establish that a short descriptor was actually received.
+
+## Forced re-detection by brief contact interruption (2026-11-15)
+
+The user reports a new observation on the CH334F hub path: a very brief interruption of the device contacts can force a new detection attempt.
+
+UART excerpt:
+
+```text
+E (207970) USBH: Dev 0 EP 0 Error
+E (207970) ENUM: Bad transfer status 1: CHECK_SHORT_DEV_DESC
+E (207970) ENUM: CHECK_SHORT_DEV_DESC FAILED
+W (207970) EXT_PORT: Port3 disabled while connected, reset attempts=1
+I (207970) usb_host: Device removed, address=0
+...
+I (212600) usb_host: Device enumerated, address=9
+I (212600) usb_host: USB device addr=9 VID=8564 PID=1000 speed=FS EP0_MPS=64 bcdUSB=0x0200 configuration=1
+I (212600) usb_host: USB configuration addr=9 interfaces=1 attributes=0x80
+```
+
+### Established observations
+
+- The test was performed through the hub, on downstream Port3.
+- The first enumeration attempt failed during the initial Device Descriptor control transfer.
+- The hub port was reported disabled while the device was still connected; the Host then reported removal at address 0.
+- After the brief contact interruption used to force re-detection, the test sequence reached successful enumeration at address 9.
+- The successful device identity is 8564:1000, Full Speed, EP0_MPS=64, bcdUSB=0x0200, one configuration and one interface.
+- The success log occurs 4.63 seconds after the failed attempt. This is the interval between the two logged events, not a measurement of the physical contact interruption duration.
+
+### Updated interpretation
+
+This confirms that 8564:1000 is capable of successful enumeration through the CH334F. It is not a fixed device/hub incompatibility. The fact that a brief physical disconnect/reconnect can trigger successful enumeration shifts the leading investigation toward connection detection, port state recovery, debounce/reset sequencing or retry behavior around the first EP0 transfer.
+
+The UART excerpt alone does not prove which electrical contact was interrupted, the exact interruption duration, or whether the successful attempt was initiated by a fresh hub connect event versus an internal retry. Do not yet change firmware reset delays or hub settings.
+
+### Next diagnostic capture
+
+If repeating this observation, record:
+- Exact physical hub port (this excerpt identifies Port3).
+- Whether the device is 8564:1000 for every attempt.
+- Approximate duration of the contact interruption.
+- Whether the interruption is on VBUS, D+, D-, or a complete connector disconnect (do not intentionally short pins).
+- The complete UART trace around the disconnect, port-change event, reset, port-enable and first EP0 request.
+
+The most useful firmware instrumentation is the hub downstream port status/change bitmap and timestamps for disconnect/connect, reset start/completion, port enable and first GET_DESCRIPTOR(Device) SETUP. Keep the current Host PHY, fsls_only, hub configuration and reset timing unchanged until this sequence is visible.
