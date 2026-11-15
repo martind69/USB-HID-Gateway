@@ -10,7 +10,7 @@ config USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 
 config USB_GATEWAY_ENUMERATION_STAGE_DELAY_MS
 	int "USB Host enumeration stage delay (ms)"
-	default 10
+	default 0
 	range 0 100
 	help
 		Diagnostic delay inserted between USB Host enumeration state-machine
