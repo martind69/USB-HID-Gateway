@@ -31,8 +31,8 @@ int main(void)
 	report = hid_parser_get_report(0U);
 	assert(report != NULL);
 	assert(report->type == HID_REPORT_TYPE_INPUT);
-	assert(report->payload_bits == 72U);
-	assert(report->payload_bytes == 9U);
+	assert(report->payload_bits == 64U);
+	assert(report->payload_bytes == 8U);
 	assert(report->field_count == 3U);
 
 	report = hid_parser_get_report(1U);
