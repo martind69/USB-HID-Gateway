@@ -151,8 +151,8 @@ Not yet verified:
 - The new parser and test have not yet been compiled or executed in the user's ESP-IDF/host environment.
 - The parser now uses caller-owned per-interface contexts.
 - Full HID 1.11 usage semantics, Array slot resolution, bit accessors, parser fuzzing and G815/G502 captured-descriptor tests remain pending.
-- The Espressif USB Host HID class driver is now installed alongside the USB Host library. It opens HID interfaces, copies their report descriptors, parses them into per-interface contexts and queues raw interrupt-IN reports. This source is not yet built or hardware-tested.
-- Raw reports enter a bounded queue in `hid_proxy.c`; no semantic translation or TinyUSB report submission is connected yet.
+- The Espressif USB Host HID class driver is installed alongside the USB Host library. It opens HID interfaces, copies report descriptors, parses per-interface contexts and queues raw interrupt-IN reports. A semantic translator maps common keyboard modifiers/key arrays and mouse buttons/relative axes to the existing TinyUSB keyboard/mouse report IDs. The queue is consumed in task context and retains the pending report while the PC endpoint is busy. Source-level tests are present; the code has not yet been built or hardware-tested.
+- Raw reports enter a bounded queue in `hid_proxy.c`, are decoded through `hid_semantic.c`, and are submitted to TinyUSB's fixed keyboard/mouse report IDs. Unsupported report formats are not forwarded.
 
 ## Integration still pending
 
