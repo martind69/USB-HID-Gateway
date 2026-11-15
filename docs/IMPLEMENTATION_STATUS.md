@@ -130,7 +130,8 @@ A host test source is present at `tests/host/test_mapping.c`, but it is not yet 
 
 The diagnostics component provides a five-second serial summary, bounded host-device registry, proxy counters, I2C health hooks, heap and uptime reporting. Host enumeration and I2C health remain unavailable until their drivers are implemented and connected.
 
-## Generic HID parser – initial implementation slice
+## Generic HID parser – per-interface contexts
+
 
 Files:
 - `components/usb_gateway/hid_parser.h`
@@ -148,10 +149,10 @@ Implemented at source level:
 
 Not yet verified:
 - The new parser and test have not yet been compiled or executed in the user's ESP-IDF/host environment.
-- The parser is currently a single global context, not yet suitable for concurrent per-interface descriptors.
+- The parser now uses caller-owned per-interface contexts.
 - Full HID 1.11 usage semantics, Array slot resolution, bit accessors, parser fuzzing and G815/G502 captured-descriptor tests remain pending.
-- No USB Host HID interface claiming, report-descriptor retrieval or interrupt-IN report reception has been integrated.
-- No parser output is yet connected to `mapping.c`, `hid_proxy.c` or TinyUSB Device report submission.
+- The Espressif USB Host HID class driver is now installed alongside the USB Host library. It opens HID interfaces, copies their report descriptors, parses them into per-interface contexts and queues raw interrupt-IN reports. This source is not yet built or hardware-tested.
+- Raw reports enter a bounded queue in `hid_proxy.c`; no semantic translation or TinyUSB report submission is connected yet.
 
 ## Integration still pending
 
