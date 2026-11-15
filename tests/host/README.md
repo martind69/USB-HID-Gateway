@@ -1,8 +1,6 @@
 # Host-side unit tests
 
-The parser and mapping tests are designed to run without ESP-IDF or target hardware.
-
-Example with GCC:
+These tests do not require ESP-IDF or target hardware.
 
 ```sh
 gcc -std=c11 -Wall -Wextra -Werror -Icomponents/usb_gateway \
@@ -11,9 +9,12 @@ gcc -std=c11 -Wall -Wextra -Werror -Icomponents/usb_gateway \
 ./test_hid_parser
 
 gcc -std=c11 -Wall -Wextra -Werror -Icomponents/usb_gateway \
-	components/usb_gateway/mapping.c tests/host/test_mapping.c \
-	-o test_mapping
-./test_mapping
+	components/usb_gateway/hid_parser.c \
+	components/usb_gateway/hid_semantic.c \
+	tests/host/test_hid_semantic.c -o test_hid_semantic
+./test_hid_semantic
 ```
 
-These tests are not yet wired into ESP-IDF CMake or CI.
+The tests cover independent keyboard/mouse parser contexts, report layout,
+bit extraction, standard keyboard/mouse translation and disconnect release.
+They are not yet wired into ESP-IDF CMake or CI.
