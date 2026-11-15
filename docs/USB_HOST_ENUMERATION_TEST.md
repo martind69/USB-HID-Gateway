@@ -16,7 +16,7 @@ The firmware:
 
 ## Board routing required for this test
 
-**Do not assume an H3 position from the previous routing description.** The earlier statement that H3=Host is the verified route for USB1–USB3 has been withdrawn: physical testing has shown hub-port activity on USB1–USB3 with H3=Device, while the corrected H3=Host test successfully enumerated the stick only on J8 / USBHSD1 (user label 'USB4'). The complete U15-to-U14/J8 net mapping is still under investigation.
+**The user has confirmed that the selector/jumper setting is now resolved.** Keep the board in that confirmed setting during the following enumeration diagnosis; do not change H3 while collecting the diagnostic trace. The earlier H3=Host/Device observations below are historical test results, not a request to repeat the selector investigation.
 
 The user's 'USB4' label refers to J8 / USBHSD1, not a fourth USB-A downstream port.
 
@@ -55,7 +55,7 @@ CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST=n
 
 Then run `idf.py -B build/default reconfigure` and `idf.py -B build/default build`.
 
-The managed USB Host dependency is pinned to `espressif/usb ~1.6.0`. This component release requires ESP-IDF 5.5.3 or later; the user's ESP-IDF 6.1 environment satisfies that minimum.
+The managed USB Host dependency is `espressif/usb ~1.6.1`. Version 1.6.1 includes ESP32-P4 fixes for channel-error handling and external-hub device cleanup. It does not claim to fix this particular enumeration failure; it is the current diagnostic baseline.
 
 ## Flash and monitor
 
@@ -73,28 +73,26 @@ Replace `COMx` with the actual CH343P port.
 At startup, expect log messages similar to:
 
 ```text
-USB Host diagnostic ready; verify H3 routing against the current hardware test notes; enumeration only
+USB Host diagnostic ready; verify the confirmed board selector setting; enumeration only
 USB Host controller: HS OTG operating FS/LS-only for hub compatibility
 USB Host client registered; waiting for devices
 ```
 
-The firmware cannot electrically detect the H3 jumper position. Any H3 mode in a startup log is an instruction only, not a jumper-state measurement.
+The firmware enables DEBUG logging for the USB Host, enumeration, hub and external-port components before installing the Host Library.
 
 ## Hardware test
 
-1. Record the H3 position used for this test. Until the routing discrepancy is resolved, test both positions separately and do not infer the route from the silkscreen label alone.
-2. Confirm that the board's USB-A VBUS supply is enabled and provides 5 V.
-3. Connect one known-good USB stick to USB1.
-4. Wait for the device enumeration log. Record VID, PID, speed and interface count.
-5. Disconnect the stick and confirm the removal/disconnect log.
-6. Repeat the same stick on USB2 and USB3, one port at a time.
-7. If all three ports work, test the Logitech G815 and G502 through the intended USB1–USB3 hub path.
+1. Leave the selector/jumper in the position already confirmed by the user.
+2. Use the same known-good USB stick and connect it directly to the failing downstream port, without an extension cable.
+3. Capture the complete UART output from before insertion until the port is disabled or enumeration succeeds.
+4. Repeat separately for the other failing downstream port; do not move the selector between tests.
+5. Record the exact physical port and whether the stick was inserted before or after board power-up.
 
 Expected Logitech identities from the existing captures:
 - G815 DE: `046D:C33F`
 - G502 HERO: `046D:C08B`
 
-J8 / USBHSD1 is the working connection in the corrected H3=Host test (user label 'USB4'). Its relation to observed hub-port activity remains to be reconciled with the complete U15 net mapping.
+J8 / USBHSD1 was the working positive-control connection in the earlier H3=Host test (user label 'USB4'). The current investigation is focused on the failed EP0 control transfer in the already confirmed selector position.
 
 ## Expected serial output
 
@@ -137,7 +135,7 @@ Corrected USB port test result with H3 in Host mode (2026-11-15):
 
 The earlier report that USB3 enumerated in H3=Host mode was a user correction error and is superseded. J8 / USBHSD1 (user label 'USB4') is the working positive-control connection for H3=Host. The user's 'USB4' label refers specifically to J8 / USBHSD1, not a USB4 Type-A port or test point.
 
-Additional test with H3 in Device mode (2026-11-15):
+Earlier additional test with H3 in Device mode (2026-11-15; historical observation, selector investigation subsequently resolved):
 
 - The Host stack reports downstream Port1, Port2 and Port3 activity; Port4 remains inactive.
 - Port1 and Port2 do not complete enumeration. The short Device Descriptor control transfer fails with `CHECK_SHORT_DEV_DESC FAILED`, and each port is disabled while still connected.
@@ -165,7 +163,37 @@ USB1 and USB2 are not yet diagnosed. The current log does not establish whether 
 5. If VBUS is present and stable, inspect the CH334F downstream port routing/connector soldering and capture the full boot and attach log for each port.
 6. Record whether the host emits any hub-port connect, reset, enable or disconnect event for USB1/USB2. The current application-level log only reports successfully enumerated child devices and does not yet expose all hub-port state transitions.
 
-Do not change USB Host firmware or mux routing solely on the basis of these observations. J8 / USBHSD1 (user label 'USB4') is the proven positive control in the corrected H3=Host test. The H3-to-port mapping must first be reconciled with the complete schematic nets and physical continuity measurements.
+Do not change USB Host routing or selector settings during this enumeration diagnosis. The current failure is a USB control-transfer error after the downstream port reports connection/reset activity.
+
+
+## Current failure analysis: CHECK_SHORT_DEV_DESC (2026-11-15)
+
+The log line:
+
+```text
+Bad transfer status 1: CHECK_SHORT_DEV_DESC
+```
+
+must not be interpreted as proof that the device returned a descriptor that was too short. `CHECK_SHORT_DEV_DESC` is the USB Host enumeration state that requests the initial 8-byte Device Descriptor header. Transfer status value 1 is `USB_TRANSFER_STATUS_ERROR`; the USB Host API defines this as a transfer failure caused by excessive bus errors, for example no response or CRC errors. The Host stack therefore fails before a valid short descriptor can be parsed and before the application receives `USB_HOST_CLIENT_EVENT_NEW_DEV`.
+
+The firmware now enables DEBUG logs for the `USBH`, `ENUM`, `HUB` and `EXT_PORT` tags before Host installation. This should expose the enumeration sequence, hub-port reset state and lower-level Host errors. It is diagnostic instrumentation, not a workaround.
+
+### Required capture
+
+- Keep the selector/jumper in the already confirmed position.
+- Use the same USB stick and cable-free direct connection.
+- Capture the complete UART log from boot through the failure, including DEBUG lines.
+- Test one physical port at a time and record its connector label.
+- Do not change `fsls_only`, PHY selection, reset timing or hub configuration yet; change one variable only after the trace identifies the failing layer.
+
+### Interpretation guide
+
+- `USB_TRANSFER_STATUS_ERROR` (1): low-level transfer error; investigate response/CRC/channel events and signal path.
+- `USB_TRANSFER_STATUS_TIMED_OUT` (2): no successful completion before timeout.
+- `USB_TRANSFER_STATUS_STALL` (4): device returned STALL; this differs from status 1.
+- A successful transfer with an actual length below the expected 16 bytes (8-byte setup packet + 8-byte descriptor) would be a genuine short response and is reported separately by the enumeration code.
+
+The current evidence does not yet distinguish a data-line/signal-integrity problem, hub downstream-port issue, reset/timing problem or controller/driver defect. Do not patch enumeration to accept the error or force a device address: the device has not completed the mandatory initial control transfer.
 
 ## Not implemented in this milestone
 
@@ -185,4 +213,4 @@ Do not change USB Host firmware or mux routing solely on the basis of these obse
 - [Waveshare USB routing assessment](WAVESHARE_USB_ROUTING.md)
 - [ESP-IDF ESP32-P4 USB Host documentation](https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html)
 - [Espressif USB Host Library source](https://github.com/espressif/esp-usb/blob/master/host/usb/include/usb/usb_host.h)
-- [ESP Component Registry: espressif/usb 1.6.0](https://components.espressif.com/components/espressif/usb/versions/1.6.0)
+- [ESP Component Registry: espressif/usb 1.6.1](https://components.espressif.com/components/espressif/usb/versions/1.6.0)
