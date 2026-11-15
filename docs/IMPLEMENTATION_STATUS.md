@@ -36,10 +36,10 @@ The source has not yet been compiled in the user's ESP-IDF environment after the
 The previous interpretation of the U15/H3 schematic truth table as proving the complete USB1–USB3 routing was incorrect or incomplete and is withdrawn pending net-level verification.
 
 Physical observations (2026-11-15):
-- H3=Host: USB3 successfully enumerated the test stick; USB1 and USB2 did not successfully enumerate.
+- H3=Host (corrected user report): USB4 successfully enumerated the test stick; USB1, USB2 and USB3 did not successfully enumerate. The earlier USB3 success entry was incorrect.
 - H3=Device: the Host stack reported activity on downstream Port1, Port2 and Port3; Port4 remained inactive.
 - In H3=Device mode, Port1 and Port2 failed at the short Device Descriptor control transfer (`CHECK_SHORT_DEV_DESC FAILED`) and were disabled while still connected. This is not successful enumeration.
-- USB4 remains a test point (TP), not a normal receptacle.
+- USB4 successfully enumerated a USB stick in the corrected H3=Host test. Its physical connector designation must be checked against the exact board revision; the earlier test-point-only assumption is withdrawn.
 
 The exact H3/U15-to-U14/J8 signal routing must be checked against the complete schematic nets and physical continuity before declaring either H3 position the correct USB1–USB3 Host setting. See `docs/WAVESHARE_USB_ROUTING.md` and `docs/USB_HOST_ENUMERATION_TEST.md`.
 
