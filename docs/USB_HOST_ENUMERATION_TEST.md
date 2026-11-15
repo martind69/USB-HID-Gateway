@@ -195,6 +195,35 @@ The firmware now enables DEBUG logs for the `USBH`, `ENUM`, `HUB` and `EXT_PORT`
 
 The current evidence does not yet distinguish a data-line/signal-integrity problem, hub downstream-port issue, reset/timing problem or controller/driver defect. Do not patch enumeration to accept the error or force a device address: the device has not completed the mandatory initial control transfer.
 
+## CH334F-focused diagnosis (2026-11-15)
+
+The user has identified the CH334F as the only relevant difference between the working direct connection at J8 / USBHSD1 and the failing downstream USB-A ports. The CH334F hub path is therefore the primary fault domain. Do not reopen the H3 selector/jumper investigation.
+
+The CH334F is a USB 2.0 four-port hub controller. The WCH datasheet specifies HS/FS upstream support, HS/FS/LS downstream support and MTT capability. The ESP32-P4 Host is configured with `fsls_only = true`, so the upstream hub link is intentionally negotiated at Full Speed. This avoids the ESP-IDF Host stack's lack of a Transaction Translator layer for Full-/Low-Speed devices behind a High-Speed hub. In this configuration, MTT is not expected to be involved in translating child traffic because the hub's upstream connection is Full Speed.
+
+The supplied log shows that the hub-port driver reaches downstream Port1, Port2 and Port3 and attempts enumeration, but the first child-device EP0 transfer fails. It does not show successful child enumeration. The next investigation must distinguish:
+
+1. CH334F downstream port reset/release behavior and timing.
+2. CH334F upstream negotiated speed and hub descriptor/port characteristics.
+3. Downstream D+/D- signal integrity and routing from each CH334F DPx/DMx pair to its connector.
+4. CH334F RESET#/CDP, 12 MHz clock, V5/VDD33 supply and PSELF power-mode strap.
+5. Whether the Host stack is issuing the initial 8-byte GET_DESCRIPTOR(Device) request correctly after the port reset.
+
+### Controlled test sequence
+
+- Keep the confirmed selector setting unchanged.
+- Use the same USB stick that successfully enumerates directly at J8 / USBHSD1.
+- First confirm that the same stick still enumerates directly at J8 with the current firmware.
+- Then connect it to one CH334F downstream port at a time and capture the full log.
+- Compare the CH334F port LED/state and the exact reset-to-first-control-transfer timing across ports.
+- If possible, capture D+/D- at the CH334F downstream port during reset and the first GET_DESCRIPTOR request. Verify reset release, Full-Speed idle/J state and device response/K/handshake activity.
+- Measure CH334F V5 and VDD33 at the IC, not only USB-A VBUS. Check RESET# is high after power-up and the 12 MHz oscillator is running.
+- Verify the CH334F PSELF strap against the board schematic and actual power topology; the WCH datasheet says PSELF is sampled during reset and defaults high (self-powered) unless pulled low.
+
+Do not change Host reset delays, PHY selection, `fsls_only`, or the hub driver yet. First obtain the hub-side link state and one downstream D+/D- capture. The existing `USBH: Dev 0 EP 0 Error` message alone is not enough to justify a firmware workaround.
+
+Reference: WCH CH334/CH335 datasheet, especially overview, CH334F pinout, PSELF definition, reset behavior and hub repeater/TT architecture: https://285624.selcdn.ru/syms1/iblock/d35/d35ceb2ab15bd757047c631a70c4f3e6/CH334DS1.PDF
+
 ## Not implemented in this milestone
 
 - USB Mass Storage Class driver and volume mounting.
