@@ -22,6 +22,7 @@ typedef bool (*hid_proxy_forward_callback_t)(
 
 void hid_proxy_init(void);
 void hid_proxy_process(void);
+void hid_proxy_set_output_enabled(bool enabled);
 void hid_proxy_set_output_callback(
 	hid_proxy_forward_callback_t callback,
 	void *context);
