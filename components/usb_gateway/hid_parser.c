@@ -29,6 +29,7 @@
 typedef struct {
 	uint32_t usage_page;
 	int32_t logical_min;
+	int32_t logical_max;
 	uint32_t report_size;
 	uint32_t report_count;
 	uint8_t report_id;
@@ -174,7 +175,8 @@ hid_parser_result_t hid_parser_parse_report(
 				global.logical_min = read_signed(data, item_size);
 				break;
 			case HID_GLOBAL_LOGICAL_MAX:
-				(void)value;
+				global.logical_max = (global.logical_min < 0) ?
+					read_signed(data, item_size) : (int32_t)value;
 				break;
 			case HID_GLOBAL_REPORT_SIZE:
 				global.report_size = value;
@@ -226,6 +228,11 @@ hid_parser_result_t hid_parser_parse_report(
 			}
 		} else if (item_type == HID_ITEM_TYPE_MAIN) {
 			if (item_tag == HID_MAIN_COLLECTION) {
+				if (collection_depth == 0U && value == 1U &&
+					local_usage_count > 0U) {
+					context->top_level_usage_page = (uint16_t)global.usage_page;
+					context->top_level_usage = (uint16_t)local_usages[0];
+				}
 				if (++collection_depth > HID_PARSER_COLLECTION_DEPTH) {
 					result = HID_PARSER_ERR_COLLECTION;
 				}
@@ -287,6 +294,8 @@ hid_parser_result_t hid_parser_parse_report(
 						field->bit_offset = (uint16_t)cursor->bit_count;
 						field->bit_size = (uint16_t)global.report_size;
 						field->report_count = (uint16_t)global.report_count;
+						field->logical_min = global.logical_min;
+						field->logical_max = global.logical_max;
 						field->main_flags = value;
 						field->is_array = (value & 0x02U) == 0U;
 						field->is_relative = (value & 0x04U) != 0U;
@@ -356,4 +365,46 @@ const uint8_t *hid_parser_get_descriptor(
 	}
 	return (context != NULL && context->descriptor_length > 0U) ?
 		context->descriptor : NULL;
+}
+
+bool hid_parser_read_field_value(
+	const hid_parser_field_t *field,
+	const uint8_t *payload,
+	size_t payload_length,
+	uint16_t element_index,
+	int32_t *value)
+{
+	uint32_t raw_value = 0U;
+	uint32_t bit_offset;
+	uint16_t bit;
+	uint16_t byte_index;
+
+	if (field == NULL || payload == NULL || value == NULL ||
+		element_index >= field->report_count ||
+		field->bit_size == 0U || field->bit_size > 32U) {
+		return false;
+	}
+
+	bit_offset = (uint32_t)field->bit_offset +
+		((uint32_t)element_index * field->bit_size);
+	if ((uint64_t)bit_offset + field->bit_size >
+		(uint64_t)payload_length * 8U) {
+		return false;
+	}
+
+	for (bit = 0U; bit < field->bit_size; ++bit) {
+		byte_index = (uint16_t)((bit_offset + bit) / 8U);
+		if ((payload[byte_index] &
+			(uint8_t)(1U << ((bit_offset + bit) % 8U))) != 0U) {
+			raw_value |= (1UL << bit);
+		}
+	}
+
+	if (field->logical_min < 0 && field->bit_size < 32U &&
+		(raw_value & (1UL << (field->bit_size - 1U))) != 0U) {
+		raw_value |= (~0UL) << field->bit_size;
+	}
+
+	*value = (int32_t)raw_value;
+	return true;
 }
