@@ -30,17 +30,17 @@ static int32_t clamp_int8(int32_t value)
 	return value;
 }
 
-static void add_key(uint8_t *keys, uint8_t key)
+static bool add_key(uint8_t *keys, uint8_t key)
 {
 	size_t i;
 	size_t free_index = HID_SEMANTIC_KEY_COUNT;
 
 	if (key == 0U) {
-		return;
+		return true;
 	}
 	for (i = 0U; i < HID_SEMANTIC_KEY_COUNT; ++i) {
 		if (keys[i] == key) {
-			return;
+			return true;
 		}
 		if (keys[i] == 0U && free_index == HID_SEMANTIC_KEY_COUNT) {
 			free_index = i;
@@ -48,7 +48,9 @@ static void add_key(uint8_t *keys, uint8_t key)
 	}
 	if (free_index < HID_SEMANTIC_KEY_COUNT) {
 		keys[free_index] = key;
+		return true;
 	}
+	return false;
 }
 
 static void build_keyboard_report(uint8_t report[8])
@@ -68,7 +70,9 @@ static void build_keyboard_report(uint8_t report[8])
 		modifiers |= state->modifiers;
 		rollover = rollover || state->key_rollover;
 		for (j = 0U; j < HID_SEMANTIC_KEY_COUNT; ++j) {
-			add_key(merged_keys, state->keys[j]);
+			if (!add_key(merged_keys, state->keys[j])) {
+				rollover = true;
+			}
 		}
 	}
 
@@ -170,8 +174,10 @@ static void process_keyboard_fields(
 				}
 				if (value == 1) {
 					rollover = true;
-				} else if (value > 1 && value <= UINT8_MAX) {
-					add_key(keys, (uint8_t)value);
+				} else if (value > 3 && value <= UINT8_MAX) {
+					if (!add_key(keys, (uint8_t)value)) {
+						rollover = true;
+					}
 				}
 			}
 		} else {
@@ -196,7 +202,9 @@ static void process_keyboard_fields(
 						key_field_seen = true;
 					}
 					if (value != 0 && usage > 0U && usage <= UINT8_MAX) {
-						add_key(keys, (uint8_t)usage);
+						if (!add_key(keys, (uint8_t)usage)) {
+							rollover = true;
+						}
 					}
 				}
 			}
@@ -250,7 +258,7 @@ static void process_mouse_fields(
 				uint16_t usage = field_usage(field, element);
 				int32_t value;
 
-				if (usage >= 1U && usage <= 8U &&
+				if (usage >= 1U && usage <= 5U &&
 					hid_parser_read_field_value(field, payload,
 						payload_length, element, &value) && value != 0) {
 					buttons |= (uint8_t)(1U << (usage - 1U));
