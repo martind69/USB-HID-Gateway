@@ -224,6 +224,7 @@ static void process_mouse_fields(
 	int32_t *pan)
 {
 	bool buttons_seen = false;
+	uint8_t buttons = state->buttons;
 	size_t i;
 
 	*delta_x = 0;
@@ -241,8 +242,10 @@ static void process_mouse_fields(
 		}
 
 		if (field->usage_page == 0x09U) {
-			buttons_seen = true;
-			state->buttons = 0U;
+			if (!buttons_seen) {
+				buttons = 0U;
+				buttons_seen = true;
+			}
 			for (element = 0U; element < field->report_count; ++element) {
 				uint16_t usage = field_usage(field, element);
 				int32_t value;
@@ -250,7 +253,7 @@ static void process_mouse_fields(
 				if (usage >= 1U && usage <= 8U &&
 					hid_parser_read_field_value(field, payload,
 						payload_length, element, &value) && value != 0) {
-					state->buttons |= (uint8_t)(1U << (usage - 1U));
+					buttons |= (uint8_t)(1U << (usage - 1U));
 				}
 			}
 		} else if (field->usage_page == 0x01U && field->is_relative) {
@@ -290,7 +293,9 @@ static void process_mouse_fields(
 		}
 	}
 
-	(void)buttons_seen;
+	if (buttons_seen) {
+		state->buttons = buttons;
+	}
 }
 
 void hid_semantic_init(void)
