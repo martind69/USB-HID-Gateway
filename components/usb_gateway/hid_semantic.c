@@ -298,7 +298,7 @@ void hid_semantic_init(void)
 	memset(s_interfaces, 0, sizeof(s_interfaces));
 }
 
-bool hid_semantic_process_input_report(
+hid_semantic_result_t hid_semantic_process_input_report(
 	uint8_t interface_id,
 	const hid_parser_context_t *parser,
 	const uint8_t *raw_report,
@@ -315,7 +315,7 @@ bool hid_semantic_process_input_report(
 		emit == NULL ||
 		!get_report_payload(parser, raw_report, raw_report_length,
 			&report_id, &payload, &payload_length)) {
-		return false;
+		return HID_SEMANTIC_ERR_REPORT;
 	}
 
 	state = &s_interfaces[interface_id];
@@ -330,7 +330,8 @@ bool hid_semantic_process_input_report(
 			payload, payload_length);
 		build_keyboard_report(keyboard_report);
 		return emit(HID_SEMANTIC_KEYBOARD_REPORT_ID,
-			keyboard_report, sizeof(keyboard_report), emit_context);
+			keyboard_report, sizeof(keyboard_report), emit_context) ?
+			HID_SEMANTIC_OK : HID_SEMANTIC_OUTPUT_BUSY;
 	}
 
 	if (parser->top_level_usage_page == 0x01U &&
@@ -350,43 +351,53 @@ bool hid_semantic_process_input_report(
 		mouse_report[3] = (uint8_t)(int8_t)clamp_int8(wheel);
 		mouse_report[4] = (uint8_t)(int8_t)clamp_int8(pan);
 		return emit(HID_SEMANTIC_MOUSE_REPORT_ID,
-			mouse_report, sizeof(mouse_report), emit_context);
+			mouse_report, sizeof(mouse_report), emit_context) ?
+			HID_SEMANTIC_OK : HID_SEMANTIC_OUTPUT_BUSY;
 	}
 
-	return false;
+	return HID_SEMANTIC_UNSUPPORTED;
 }
 
-void hid_semantic_remove_interface(
+bool hid_semantic_remove_interface(
 	uint8_t interface_id,
 	hid_semantic_emit_callback_t emit,
 	void *emit_context)
 {
 	hid_semantic_interface_state_t *state;
+	hid_semantic_interface_state_t previous_state;
+	bool was_keyboard;
+	bool was_mouse;
+	uint8_t keyboard_report[8] = { 0 };
+	uint8_t mouse_report[5] = { 0 };
 
 	if (interface_id == 0U) {
-		return;
+		return true;
 	}
 	state = &s_interfaces[interface_id];
 	if (!state->active) {
-		return;
+		return true;
 	}
 
-	{
-		bool was_keyboard = state->keyboard;
-		bool was_mouse = state->mouse;
-		uint8_t keyboard_report[8] = { 0 };
-		uint8_t mouse_report[5] = { 0 };
+	previous_state = *state;
+	was_keyboard = state->keyboard;
+	was_mouse = state->mouse;
+	memset(state, 0, sizeof(*state));
 
-		memset(state, 0, sizeof(*state));
-		if (emit != NULL && was_keyboard) {
-			build_keyboard_report(keyboard_report);
-			(void)emit(HID_SEMANTIC_KEYBOARD_REPORT_ID,
-				keyboard_report, sizeof(keyboard_report), emit_context);
-		}
-		if (emit != NULL && was_mouse) {
-			mouse_report[0] = build_mouse_buttons();
-			(void)emit(HID_SEMANTIC_MOUSE_REPORT_ID,
-				mouse_report, sizeof(mouse_report), emit_context);
+	if (emit != NULL && was_keyboard) {
+		build_keyboard_report(keyboard_report);
+		if (!emit(HID_SEMANTIC_KEYBOARD_REPORT_ID,
+			keyboard_report, sizeof(keyboard_report), emit_context)) {
+			*state = previous_state;
+			return false;
 		}
 	}
+	if (emit != NULL && was_mouse) {
+		mouse_report[0] = build_mouse_buttons();
+		if (!emit(HID_SEMANTIC_MOUSE_REPORT_ID,
+			mouse_report, sizeof(mouse_report), emit_context)) {
+			*state = previous_state;
+			return false;
+		}
+	}
+	return true;
 }
