@@ -11,7 +11,7 @@ Files:
 - `docs/USB_HOST_ENUMERATION_TEST.md`
 
 Implemented at source level:
-- Added managed dependency `espressif/usb ~1.6.0` for ESP-IDF 6.1.
+- Added managed dependency `espressif/usb ~1.6.1` for ESP-IDF 6.1.
 - Installed the ESP-IDF USB Host Library on the USB 2.0 High-Speed OTG peripheral using `peripheral_map = BIT0`.
 - Configured the HS controller for FS/LS-only operation to accommodate Full-Speed peripherals behind High-Speed hubs without Transaction Translator support.
 - Added the Host Library daemon task and asynchronous client task.
@@ -33,7 +33,7 @@ The source has not yet been compiled in the user's ESP-IDF environment after the
 
 ### Board routing clarified (2026-11-15)
 
-The previous interpretation of the U15/H3 schematic truth table as proving the complete USB1–USB3 routing was incorrect or incomplete and is withdrawn pending net-level verification.
+The user has confirmed that the H3 selector/jumper setting is resolved. Do not continue treating selector position as the active issue or ask the user to repeat selector tests.
 
 Physical observations (2026-11-15):
 - H3=Host (corrected user report): J8 / USBHSD1 (informally called 'USB4' by the user) successfully enumerated the test stick; USB1, USB2 and USB3 did not successfully enumerate. The earlier USB3 success entry was incorrect.
@@ -41,7 +41,16 @@ Physical observations (2026-11-15):
 - In H3=Device mode, Port1 and Port2 failed at the short Device Descriptor control transfer (`CHECK_SHORT_DEV_DESC FAILED`) and were disabled while still connected. This is not successful enumeration.
 - J8 / USBHSD1, informally called 'USB4' by the user, successfully enumerated a USB stick in the corrected H3=Host test. It is not a fourth USB-A downstream port.
 
-The exact H3/U15-to-U14/J8 signal routing must be checked against the complete schematic nets and physical continuity before declaring either H3 position the correct USB1–USB3 Host setting. See `docs/WAVESHARE_USB_ROUTING.md` and `docs/USB_HOST_ENUMERATION_TEST.md`.
+The active issue is the failed EP0 control transfer during `CHECK_SHORT_DEV_DESC`, not selector routing. See the current failure analysis in `docs/USB_HOST_ENUMERATION_TEST.md`.
+
+### EP0 enumeration failure diagnosis (2026-11-15)
+
+- Confirmed interpretation: transfer status value 1 is `USB_TRANSFER_STATUS_ERROR`, not a short-packet or short-descriptor length result. Espressif defines this status as excessive transfer errors such as no response or CRC errors.
+- `CHECK_SHORT_DEV_DESC` is the state that checks the first 8 bytes of the Device Descriptor after the initial control transfer. The failure occurs before a valid descriptor is parsed and before the application receives `USB_HOST_CLIENT_EVENT_NEW_DEV`.
+- Added runtime DEBUG logging for `USBH`, `ENUM`, `HUB` and `EXT_PORT` before USB Host installation.
+- Updated the managed USB Host dependency minimum to `espressif/usb ~1.6.1`, which contains additional ESP32-P4 channel-error and external-hub cleanup fixes. This update is a safer diagnostic baseline, not a claimed fix for the observed transfer error.
+- The updated firmware has not yet been built or tested on the board. The next required evidence is a full DEBUG UART capture from boot through failure, with the selector left in its already confirmed position.
+- Do not bypass the failed initial descriptor transfer or change `fsls_only`, PHY mapping, hub settings or reset timings until the detailed trace identifies the failing layer.
 
 ## PC-facing USB HID Device proof of concept
 
@@ -112,7 +121,7 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 - Verify that Type-C 6 exposes USB OTG FS on GPIO24/GPIO25 after the runtime PHY selection.
 - Verify that Type-C 4 / CH343P remains available for programming and logs after PHY selection.
 - Verify simultaneous USB 2.0 HS Host on USB1–USB3 via U14/CH334F and USB 1.1 FS Device on Type-C 6 after the isolated Device test passes.
-- Reconcile H3/U15 signal routing against the full schematic and continuity measurements; then test Host enumeration independently on USB1, USB2 and USB3 in the verified selector position.
+- Resolve the EP0 `CHECK_SHORT_DEV_DESC` transfer error using detailed Host/HUB/port diagnostics in the confirmed selector position.
 - HID Host interface discovery/claiming, report descriptor retrieval and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
 - Generic HID 1.1 parser and parser-populated mapping metadata.
