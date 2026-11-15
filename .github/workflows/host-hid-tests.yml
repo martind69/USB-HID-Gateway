@@ -1,0 +1,40 @@
+name: Host HID unit tests
+
+on:
+  push:
+    branches:
+      - architecture/proxy-motion-gateway
+  pull_request:
+    branches:
+      - architecture/proxy-motion-gateway
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compile HID parser tests
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/usb_gateway \
+            components/usb_gateway/hid_parser.c \
+            tests/host/test_hid_parser.c \
+            -o test_hid_parser
+
+      - name: Run HID parser tests
+        run: ./test_hid_parser
+
+      - name: Compile HID semantic tests
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/usb_gateway \
+            components/usb_gateway/hid_parser.c \
+            components/usb_gateway/hid_semantic.c \
+            tests/host/test_hid_semantic.c \
+            -o test_hid_semantic
+
+      - name: Run HID semantic tests
+        run: ./test_hid_semantic
