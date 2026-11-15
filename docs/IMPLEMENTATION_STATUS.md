@@ -163,3 +163,11 @@ New user test result:
 The next investigation is a controlled A/B/A comparison on the same CH334F downstream port using `090C:1000` (known-good) and `8564:1000` (known-failing). The Host application now logs `bMaxPacketSize0` (EP0_MPS) and `bcdUSB` for devices that complete enumeration.
 
 Limitation: the application cannot read/log `bMaxPacketSize0` for `8564:1000` when it fails before `USB_HOST_CLIENT_EVENT_NEW_DEV`. The initial 8-byte descriptor payload, actual transfer length/status and handshake must then be captured inside the ESP-IDF enumeration/HCD path or with a USB protocol analyzer. No EP0 sizing, reset timing, PHY or hub-driver changes should be made before that evidence is available.
+
+### Intermittent CH334F enumeration result (2026-11-15)
+
+Latest UART capture confirms successful Full-Speed enumeration through the CH334F for both `090C:1000` and `8564:1000`. Both report `bMaxPacketSize0=64`; `bcdUSB` is `0x0210` and `0x0200`, respectively. The `090C:1000` device enumerates successfully, a subsequent attempt fails at `CHECK_SHORT_DEV_DESC` with address 0, and a later attempt succeeds again. `8564:1000` also succeeds at address 4.
+
+This changes the assessment: the failure is intermittent, not a consistent incompatibility of `8564:1000`. Both devices can enumerate through the hub. A static EP0 MPS mismatch between them is not supported; a general Full-Speed hub failure is also ruled out by successful enumerations.
+
+Next: repeat a clearly labelled A/B/A sequence on one CH334F downstream port and correlate each insertion with the UART timestamps. Investigate intermittent hub-port state/reset sequencing and the initial EP0 transfer. If reproduced, instrument the ESP-IDF enumeration control transfer for setup packet, HCD status, actual length, received bytes and timing after reset completion. No firmware timing, PHY, `fsls_only` or hub configuration changes until these measurements are available.
