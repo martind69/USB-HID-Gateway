@@ -3,3 +3,5 @@ dependencies:
     version: "~3.0.0"
   espressif/usb:
     version: "~1.6.1"
+  espressif/usb_host_hid:
+    version: "~1.2.1"
