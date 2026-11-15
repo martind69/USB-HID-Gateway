@@ -1,4 +1,5 @@
 #include "usb_host.h"
+#include "usb_host_hid.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -286,6 +287,12 @@ void usb_host_init(void)
 			esp_err_to_name(result));
 		diagnostics_set_host_state(DIAG_STATE_ERROR, result);
 		return;
+	}
+
+	result = usb_host_hid_init();
+	if (result != ESP_OK) {
+		ESP_LOGE(TAG, "USB Host HID driver installation failed: %s",
+			esp_err_to_name(result));
 	}
 
 	BaseType_t task_result = xTaskCreate(
