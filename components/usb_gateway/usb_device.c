@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "diagnostics.h"
+#include "hid_proxy.h"
 #include "esp_err.h"
 #include "esp_timer.h"
 #include "esp_log.h"
@@ -14,6 +15,22 @@
 #include "hal/usb_serial_jtag_ll.h"
 
 static const char *TAG = "usb_device";
+
+static bool usb_device_forward_hid_report(
+	uint8_t report_id,
+	const uint8_t *payload,
+	size_t payload_length,
+	void *context)
+{
+	(void)context;
+
+	if (!s_driver_installed || !tud_mounted() || !tud_hid_ready() ||
+		payload == NULL || payload_length > UINT16_MAX) {
+		return false;
+	}
+	return tud_hid_report(report_id, payload, (uint16_t)payload_length);
+}
+
 static bool s_driver_installed;
 static bool s_was_mounted;
 #if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
@@ -217,8 +234,9 @@ void usb_device_init(void)
 		return;
 	}
 
-	s_driver_installed = true;
+ 	s_driver_installed = true;
 	s_was_mounted = false;
+	hid_proxy_set_output_callback(usb_device_forward_hid_report, NULL);
 	diagnostics_set_device_state(DIAG_STATE_READY, ESP_OK);
 	ESP_LOGI(TAG, "HID device stack ready; waiting for PC enumeration");
 }
