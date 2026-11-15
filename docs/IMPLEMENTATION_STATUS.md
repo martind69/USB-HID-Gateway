@@ -21,6 +21,16 @@ Implemented at source level:
 
 This is an enumeration-only diagnostic. It does not claim HID interfaces, retrieve HID report descriptors, submit interrupt-IN transfers or forward reports. The source has not yet been built or tested on the physical board.
 
+### USB Host enumeration test preparation (2026-11-15)
+
+- Added explicit startup instructions identifying H3 Host and USB1–USB3 as the test route.
+- Enabled USB Host client notifications for devices removed without an opened client handle.
+- Added removal-event logging and cleanup of pending, unopened device slots.
+- Set the standalone HID mouse test option to disabled in `sdkconfig.defaults`, so a fresh/default build starts the USB Host path.
+- Expanded the hardware procedure with the active build configuration, build/flash commands and per-port USB-stick test steps.
+
+The source has not yet been compiled in the user's ESP-IDF environment after these changes, and no physical USB-A enumeration test has been performed. Existing build directories retain their own `sdkconfig`; the mouse-test option must be disabled in the active build configuration before testing.
+
 ### Board routing clarified (2026-11-15)
 
 The Waveshare ESP32-P4-Module-DEV-KIT schematic truth table, confirmed by the user, defines the U15 (FSUSB42UMX) routing:
