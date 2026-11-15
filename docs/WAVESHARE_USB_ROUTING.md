@@ -12,18 +12,16 @@ Date: 2026-11-15
 
 Physical tests are the current source of truth for observed port behavior. The latest correction from the user establishes:
 
-| H3 position | Physical port | Observed behavior |
+| H3 position | Physical connection | Observed behavior |
 |---|---|---|
-| Host | USB1 | No successful enumeration |
-| Host | USB2 | No successful enumeration |
-| Host | USB3 | No successful enumeration |
-| Host | USB4 | USB stick successfully enumerates |
+| Host | USB1–USB3 (CH334F downstream ports) | No successful enumeration |
+| Host | J8 / USBHSD1 (user called this "USB4") | USB stick successfully enumerates |
 | Device | USB1–USB3 / hub ports 1–3 | Hub-port activity observed; enumeration failure reported on ports 1 and 2 |
 | Device | Port4 | Inactive |
 
-This supersedes the earlier mistaken report that USB3 enumerated in H3=Host mode. The H3=Host positive control is USB4, not USB3. The electrical route from H3/U15 to the hub and all four physical ports still needs to be reconciled against the complete schematic nets and board layout.
+The user's "USB4" label refers to connector J8 / USBHSD1, not a fourth USB-A port. This supersedes the earlier mistaken report that USB3 enumerated in H3=Host mode. The H3=Host positive control is J8 / USBHSD1.
 
-This corrects earlier repository descriptions that referred to a USB4 Type-A socket or an unverified direct Type-A route. The user has physically tested a connection designated USB4 and confirmed successful enumeration. This observation supersedes the earlier assumption that USB4 is only a test point; verify the connector designation and exact schematic reference before documenting its physical form.
+The user's informal name 'USB4' refers to J8 / USBHSD1. It is not a fourth USB-A downstream port. In H3=Host mode, the USB stick successfully enumerates on J8 / USBHSD1.
 
 ## H3 mode investigation — physical evidence (2026-11-15)
 
@@ -76,7 +74,7 @@ A functional USB mass-storage bridge still requires:
 - Type-C 4 uses the CH343P USB-to-UART bridge and is the programming/logging connection.
 - Type-C 6 / USB1P1 is a separate ESP32-P4 FS USB connection wired to GPIO24/GPIO25; its PHY assignment is controlled independently in firmware.
 - J8 is the USBHSD1 connector connected to the alternate U15 branch according to the schematic interpretation; its relationship to the observed H3=Device hub-port activity is not yet reconciled.
-- USB4 has successfully enumerated a USB stick in the user's H3=Host test; confirm its physical connector designation against the board revision.
+- J8 / USBHSD1 (called 'USB4' by the user) successfully enumerated a USB stick in H3=Host mode.
 
 ## Sources
 
