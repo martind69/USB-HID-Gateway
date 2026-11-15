@@ -98,7 +98,7 @@ Tasks:
 1. Select composite keyboard/mouse descriptor and identity strategy.
 2. Expose compatible report descriptors and endpoints.
 3. Implement required standard and HID class requests.
-4. Capture and classify G815/G502 vendor-specific and Feature traffic.
+4. Capture and classify G810/G502 vendor-specific and Feature traffic.
 5. Implement only evidenced transactions needed by the supported feature set.
 
 Verification:
