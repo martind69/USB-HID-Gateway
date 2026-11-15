@@ -10,16 +10,20 @@ Date: 2026-11-15
 - H3: USB Host/Device selector; it controls the U15 select input.
 - J8: USBHSD1 connector, with USBHSD1_N and USBHSD1_P signals.
 
-The schematic truth table was previously interpreted as a definitive mapping of the complete USB-A port topology. That interpretation is now disputed by physical testing and must not be used as the sole basis for selecting H3.
+Physical tests are the current source of truth for observed port behavior. The latest correction from the user establishes:
 
-| H3 position | Observed behavior on the assembled board |
-|---|---|
-| Device | The Host stack reports activity on downstream Port1, Port2 and Port3. Port4 is inactive. Port1/Port2 currently fail during the initial device-descriptor read; see the test log below. |
-| Host | In the earlier test, USB3 successfully enumerated the USB stick, while USB1 and USB2 did not successfully enumerate it. |
+| H3 position | Physical port | Observed behavior |
+|---|---|---|
+| Host | USB1 | No successful enumeration |
+| Host | USB2 | No successful enumeration |
+| Host | USB3 | No successful enumeration |
+| Host | USB4 | USB stick successfully enumerates |
+| Device | USB1–USB3 / hub ports 1–3 | Hub-port activity observed; enumeration failure reported on ports 1 and 2 |
+| Device | Port4 | Inactive |
 
-The exact electrical route from H3/U15 to the hub and connectors remains to be reconciled against the complete schematic nets and the physical board. Until that reconciliation is complete, do not describe either H3 label as a verified routing truth for USB1–USB3.
+This supersedes the earlier mistaken report that USB3 enumerated in H3=Host mode. The H3=Host positive control is USB4, not USB3. The electrical route from H3/U15 to the hub and all four physical ports still needs to be reconciled against the complete schematic nets and board layout.
 
-This corrects earlier repository descriptions that referred to a USB4 Type-A socket or an unverified direct Type-A route. There is no normal USB4 receptacle: USB4 is only exposed as a test point (TP). Do not describe USB4 as a user-connectable port.
+This corrects earlier repository descriptions that referred to a USB4 Type-A socket or an unverified direct Type-A route. The user has physically tested a connection designated USB4 and confirmed successful enumeration. This observation supersedes the earlier assumption that USB4 is only a test point; verify the connector designation and exact schematic reference before documenting its physical form.
 
 ## H3 mode investigation — physical evidence (2026-11-15)
 
@@ -41,7 +45,7 @@ W (180990) EXT_PORT: Port2 disabled while connected, reset attempts=1
 
 These messages prove that the Host stack sees activity on those hub ports and attempts enumeration. They do **not** prove successful device enumeration: the control transfer for the short Device Descriptor fails, after which the port is disabled while still connected.
 
-The earlier H3=Host test remains a separate observation: USB3 enumerated VID:PID 8564:1000, while USB1 and USB2 did not successfully enumerate.
+The corrected H3=Host observation is that USB4 enumerated VID:PID 8564:1000, while USB1, USB2 and USB3 did not successfully enumerate.
 
 Do not change firmware routing or claim a final H3-to-port mapping yet. The next step is to trace the actual U15 common/select pins and both switched signal pairs through the schematic to U14/J8, then compare that with continuity measurements on the unpowered board.
 
@@ -72,7 +76,7 @@ A functional USB mass-storage bridge still requires:
 - Type-C 4 uses the CH343P USB-to-UART bridge and is the programming/logging connection.
 - Type-C 6 / USB1P1 is a separate ESP32-P4 FS USB connection wired to GPIO24/GPIO25; its PHY assignment is controlled independently in firmware.
 - J8 is the USBHSD1 connector connected to the alternate U15 branch according to the schematic interpretation; its relationship to the observed H3=Device hub-port activity is not yet reconciled.
-- USB4 is a test point only, not a normal Type-A receptacle.
+- USB4 has successfully enumerated a USB stick in the user's H3=Host test; confirm its physical connector designation against the board revision.
 
 ## Sources
 
