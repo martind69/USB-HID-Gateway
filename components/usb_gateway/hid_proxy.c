@@ -18,6 +18,7 @@ static void *s_output_context;
 static hid_proxy_raw_report_t s_pending_report;
 static bool s_pending_report_valid;
 static bool s_output_enabled;
+static hid_parser_context_t s_parser_snapshot;
 
 void hid_proxy_init(void)
 {
@@ -108,9 +109,16 @@ void hid_proxy_process(void)
 			continue;
 		}
 
+		if (!usb_host_hid_copy_parser_context(
+			s_pending_report.interface_id, &s_parser_snapshot)) {
+			s_pending_report_valid = false;
+			processed++;
+			continue;
+		}
+
 		route_result = hid_semantic_process_input_report(
 			s_pending_report.interface_id,
-			interface_info.parser_context,
+			&s_parser_snapshot,
 			s_pending_report.data,
 			s_pending_report.length,
 			hid_proxy_emit_standard_report,
