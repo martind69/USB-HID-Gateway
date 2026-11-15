@@ -380,3 +380,12 @@ A controlled diagnostic delay has now been prepared:
 Run at least 10 insertions with 0 ms and at least 10 with 10 ms, using the same `8564:1000` device and the same CH334F downstream port. Compare failure rates and preserve full UART logs. If 10 ms does not improve reliability, test 15 ms as the second step.
 
 This is not yet built or tested on the physical board. See `docs/USB_HOST_ENUMERATION_TIMING_EXPERIMENT.md` for the complete procedure and limitations.
+
+
+## Result of broad enumeration delay test (2026-11-15)
+
+The user reports that additional delays from 10 ms through 50 ms do not change the observed enumeration behavior. The broad delay before each enumeration state-machine transition is therefore a negative experiment; increasing it further is not recommended.
+
+The default delay is now disabled (0 ms). The optional Kconfig setting and patch helper remain available for future targeted experiments, but should not be enabled during normal testing.
+
+Next step: instrument the hub port status/change bits, reset completion/port enable, and the exact first 8-byte GET_DESCRIPTOR(Device) EP0 transaction with monotonic timestamps. Capture SETUP, HCD completion status, actual length, returned bytes and channel error details. Correlate these with the CH334F downstream D+/D- waveform if test equipment is available. Do not change reset timings, debounce, PHY, fsls_only or hub configuration at this stage.
