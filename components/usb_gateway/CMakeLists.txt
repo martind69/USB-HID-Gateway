@@ -5,6 +5,7 @@ idf_component_register(
 		"usb_host_hid.c"
 		"usb_device.c"
 		"hid_parser.c"
+		"hid_semantic.c"
 		"hid_proxy.c"
 		"hotkey.c"
 		"mapping.c"
