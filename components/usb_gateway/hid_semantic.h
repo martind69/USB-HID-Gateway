@@ -10,6 +10,13 @@
 extern "C" {
 #endif
 
+typedef enum {
+	HID_SEMANTIC_OK = 0,
+	HID_SEMANTIC_OUTPUT_BUSY,
+	HID_SEMANTIC_UNSUPPORTED,
+	HID_SEMANTIC_ERR_REPORT
+} hid_semantic_result_t;
+
 typedef bool (*hid_semantic_emit_callback_t)(
 	uint8_t report_id,
 	const uint8_t *payload,
@@ -17,14 +24,14 @@ typedef bool (*hid_semantic_emit_callback_t)(
 	void *context);
 
 void hid_semantic_init(void);
-bool hid_semantic_process_input_report(
+hid_semantic_result_t hid_semantic_process_input_report(
 	uint8_t interface_id,
 	const hid_parser_context_t *parser,
 	const uint8_t *raw_report,
 	size_t raw_report_length,
 	hid_semantic_emit_callback_t emit,
 	void *emit_context);
-void hid_semantic_remove_interface(
+bool hid_semantic_remove_interface(
 	uint8_t interface_id,
 	hid_semantic_emit_callback_t emit,
 	void *emit_context);
