@@ -77,15 +77,15 @@ See [HID parser design](HID_PARSER_DESIGN.md).
 
 ## Milestone 4 – Semantic layer and raw HID proxy
 
-Current source slice: Espressif `usb_host_hid` class driver is integrated at source level. It opens discovered HID interfaces, retrieves and stores raw report descriptors, parses each descriptor into its own parser context, and queues raw interrupt-IN reports in a bounded queue. This has not yet been built or run on hardware. The queue is not yet connected to the PC-facing TinyUSB endpoint.
+Current source slice: Espressif `usb_host_hid` opens discovered interfaces, retrieves raw report descriptors, parses per-interface contexts and queues interrupt-IN reports. A semantic layer translates common keyboard and mouse reports to the fixed PC-facing TinyUSB keyboard/mouse report IDs. Source-level tests cover translation; build and hardware verification remain pending.
 
 Tasks:
 1. Retain raw descriptor and report context per interface.
 2. Resolve descriptor fields into generic semantic input events.
 3. Create bounded per-interface queues and routing metadata.
-4. Forward supported reports unchanged in Passthrough.
+4. Translate common keyboard/mouse usages into the standard PC-facing keyboard/mouse report format.
 5. Handle queue backpressure, overflow and disconnect.
-6. Preserve Output/Feature/control-transfer context where supported.
+6. Add dynamic descriptors and Output/Feature/vendor control forwarding for full device compatibility.
 
 Verification:
 - Passthrough ingress/egress reports match.
@@ -222,8 +222,8 @@ Verification:
 | Raw HID descriptors | Retrieval pending |
 | G815/G502 Input report captures | Pending |
 | Generic HID parser | Caller-owned per-interface contexts and keyboard/mouse smoke test source; not yet built or executed |
-| USB Host/Device | Host HID class-driver ingress source added; no PC-side forwarding yet |
-| Semantic layer and report router | Design only |
+| USB Host/Device | Host HID ingress and basic keyboard/mouse translation to static TinyUSB reports; not built or hardware-tested |
+| Semantic layer and report router | Basic keyboard/mouse translation and bounded report queue implemented at source level; not verified |
 | G1 input/LED protocol | Unverified |
 | JSON mapping | Design only |
 | ADS7128/DAC7578 hardware | Design baseline; electrical validation pending |
