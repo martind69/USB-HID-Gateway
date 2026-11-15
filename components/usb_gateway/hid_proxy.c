@@ -17,6 +17,7 @@ static hid_proxy_forward_callback_t s_output_callback;
 static void *s_output_context;
 static hid_proxy_raw_report_t s_pending_report;
 static bool s_pending_report_valid;
+static bool s_output_enabled;
 
 void hid_proxy_init(void)
 {
@@ -26,6 +27,11 @@ void hid_proxy_init(void)
 			HID_PROXY_RAW_REPORT_QUEUE_LENGTH,
 			sizeof(hid_proxy_raw_report_t));
 	}
+}
+
+void hid_proxy_set_output_enabled(bool enabled)
+{
+	s_output_enabled = enabled;
 }
 
 void hid_proxy_set_output_callback(
@@ -43,7 +49,7 @@ static bool hid_proxy_emit_standard_report(
 	void *context)
 {
 	(void)context;
-	if (s_output_callback == NULL) {
+	if (!s_output_enabled || s_output_callback == NULL) {
 		return false;
 	}
 	return s_output_callback(report_id, payload, payload_length, s_output_context);
@@ -64,6 +70,15 @@ bool hid_proxy_enqueue_interface_removed(uint8_t interface_id)
 void hid_proxy_process(void)
 {
 	unsigned int processed = 0U;
+
+	if (!s_output_enabled) {
+		if (s_raw_report_queue != NULL) {
+			(void)xQueueReset(s_raw_report_queue);
+		}
+		s_pending_report_valid = false;
+		hid_semantic_init();
+		return;
+	}
 
 	while (processed < 4U) {
 		usb_host_hid_interface_info_t interface_info;
