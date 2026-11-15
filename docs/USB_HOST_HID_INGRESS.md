@@ -32,13 +32,19 @@ No SET_PROTOCOL(BOOT) or SET_IDLE request is issued by this integration. This av
 - Raw input report buffer: 64 bytes.
 - Proxy ingress queue: 16 reports.
 
-Queue overflow is logged and the newest report is dropped. The current USB Device backend does not yet consume this queue, so this is an ingress milestone, not functioning passthrough.
+Queue overflow is logged and the newest report is dropped. The proxy now translates supported Generic Desktop Keyboard and Mouse input reports into the standard PC-facing TinyUSB keyboard and mouse report IDs. The queue is consumed in task context and holds a report while the PC-facing endpoint is busy.
+
+## Current translation scope
+
+- Keyboard: modifier bits and standard 6-key Array reports are translated to an 8-byte boot-style keyboard report. Multiple keyboard interfaces are merged; disconnect generates releases.
+- Mouse: Button usages 1–8, relative X/Y and Wheel, plus Consumer AC Pan, are translated to the standard 5-byte TinyUSB mouse report. Multiple mouse interfaces contribute to the merged button state.
+- Report ID is removed before field decoding and the parser's report layout is checked before translation.
 
 ## Deliberate limitations
 
-- No semantic keyboard/mouse translation is implemented yet.
-- No dynamic PC-facing HID descriptor generation is implemented.
-- The current TinyUSB composite descriptor remains the static keyboard/mouse test descriptor.
+- Translation currently covers common keyboard/mouse usages only. Consumer Control, media keys, vendor-defined usages, high-resolution wheels, NKRO beyond six simultaneous keys and arbitrary vendor reports are not exposed.
+- The PC-facing descriptor remains a fixed keyboard/mouse composite descriptor, not a dynamic mirror of upstream descriptors.
+- The current TinyUSB composite descriptor remains the static standard keyboard/mouse descriptor.
 - Output, Feature and vendor-specific control requests are not forwarded.
 - The host integration has not yet been built with the user's ESP-IDF v6.1 development checkout or tested on the board.
 - The generic Host diagnostic client and HID class driver both observe the same Host Library. The class driver claims only HID interfaces; the diagnostic client opens devices for descriptor logging but does not claim interfaces.
@@ -51,4 +57,5 @@ Queue overflow is logged and the newest report is dropped. The current USB Devic
 4. Verify one interface log per HID interface and correct VID/PID/interface numbers.
 5. Confirm raw report descriptor lengths and parser success/failure.
 6. Confirm raw input report callbacks arrive and queue overflow remains zero under ordinary typing/mouse movement.
-7. Disconnect one device while the other remains active; verify the remaining interface continues reporting.
+7. Verify key/button release on disconnect and that removing one device does not stop the other.
+8. Verify translated keyboard and mouse reports on the PC. Compare captured input sequences.
