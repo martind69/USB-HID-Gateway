@@ -1,15 +1,55 @@
 #include "hid_proxy.h"
 
+#include <string.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
+#define HID_PROXY_RAW_REPORT_QUEUE_LENGTH 16U
 #define HID_PROXY_MAX_REPORT_PAYLOAD 64U
+
+static QueueHandle_t s_raw_report_queue;
 
 void hid_proxy_init(void)
 {
-	/* Report transport queues are initialized by the USB backends. */
+	if (s_raw_report_queue == NULL) {
+		s_raw_report_queue = xQueueCreate(
+			HID_PROXY_RAW_REPORT_QUEUE_LENGTH,
+			sizeof(hid_proxy_raw_report_t));
+	}
 }
 
 void hid_proxy_process(void)
 {
-	/* Transport scheduling remains owned by the USB gateway task. */
+	/* The USB Device backend consumes queued reports after descriptor routing is configured. */
+}
+
+bool hid_proxy_enqueue_raw_report(
+	uint8_t interface_id,
+	const uint8_t *report,
+	size_t report_length)
+{
+	hid_proxy_raw_report_t item;
+
+	if (s_raw_report_queue == NULL || report == NULL ||
+		report_length == 0U || report_length > sizeof(item.data)) {
+		return false;
+	}
+
+	item.interface_id = interface_id;
+	item.length = (uint8_t)report_length;
+	memcpy(item.data, report, report_length);
+	return xQueueSend(s_raw_report_queue, &item, 0U) == pdTRUE;
+}
+
+bool hid_proxy_receive_raw_report(
+	hid_proxy_raw_report_t *report,
+	uint32_t timeout_ticks)
+{
+	if (s_raw_report_queue == NULL || report == NULL) {
+		return false;
+	}
+	return xQueueReceive(s_raw_report_queue, report, timeout_ticks) == pdTRUE;
 }
 
 bool hid_proxy_route_input_report(
@@ -29,11 +69,6 @@ bool hid_proxy_route_input_report(
 		return false;
 	}
 
-	/*
-	 * Keep the report path allocation-free. The observed G815/G502 reports
-	 * fit within Full-Speed HID packet sizes. Larger reports are forwarded
-	 * unchanged until a bounded transport-owned scratch buffer is provided.
-	 */
 	if (payload_length > sizeof(routed_payload)) {
 		(void)forward(report_id, input_payload, payload_length, context);
 		return false;
@@ -49,7 +84,6 @@ bool hid_proxy_route_input_report(
 		sizeof(routed_payload));
 
 	if (result != MAPPING_OK) {
-		/* Fail open: never drop an input report because mapping failed. */
 		(void)forward(report_id, input_payload, payload_length, context);
 		return false;
 	}
