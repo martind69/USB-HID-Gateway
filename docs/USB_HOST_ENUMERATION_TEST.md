@@ -126,13 +126,16 @@ The USB-A host ports must provide valid 5 V VBUS to the attached device/hub. If 
 
 ## Hardware test result (2026-11-15)
 
-Initial USB-A port test with H3 in Host mode:
+Corrected USB port test result with H3 in Host mode (2026-11-15):
 
 | Physical port | Result |
 |---|---|
 | USB1 | No successful enumeration observed |
 | USB2 | No successful enumeration observed |
-| USB3 | Successful enumeration |
+| USB3 | No successful enumeration observed |
+| USB4 | Successful enumeration of the USB stick |
+
+The earlier report that USB3 enumerated in H3=Host mode was a user correction error and is superseded. USB4 is the working positive-control port for H3=Host. The earlier claim that USB4 is only a test point must be verified against the exact board revision/connector designation; the user has physically connected a stick at the location identified as USB4 and observed successful enumeration.
 
 Additional test with H3 in Device mode (2026-11-15):
 
@@ -162,7 +165,7 @@ USB1 and USB2 are not yet diagnosed. The current log does not establish whether 
 5. If VBUS is present and stable, inspect the CH334F downstream port routing/connector soldering and capture the full boot and attach log for each port.
 6. Record whether the host emits any hub-port connect, reset, enable or disconnect event for USB1/USB2. The current application-level log only reports successfully enumerated child devices and does not yet expose all hub-port state transitions.
 
-Do not change USB Host firmware or mux routing solely on the basis of these observations. USB3 is a proven positive control in the earlier H3=Host test. The H3-to-port mapping must first be reconciled with the complete schematic nets and physical continuity measurements.
+Do not change USB Host firmware or mux routing solely on the basis of these observations. USB4 is the proven positive control in the corrected H3=Host test. The H3-to-port mapping must first be reconciled with the complete schematic nets and physical continuity measurements.
 
 ## Not implemented in this milestone
 
