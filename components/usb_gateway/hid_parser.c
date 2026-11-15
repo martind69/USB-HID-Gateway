@@ -2,9 +2,6 @@
 
 #include <string.h>
 
-#define HID_GLOBAL_STACK_DEPTH 4U
-#define HID_COLLECTION_DEPTH 8U
-#define HID_LOCAL_USAGE_CAPACITY 64U
 
 #define HID_ITEM_TYPE_MAIN 0U
 #define HID_ITEM_TYPE_GLOBAL 1U
@@ -37,21 +34,6 @@ typedef struct {
 	uint8_t report_id;
 } hid_global_state_t;
 
-typedef struct {
-	uint32_t bit_count;
-	uint8_t report_id;
-} hid_report_cursor_t;
-
-static uint8_t s_descriptor[HID_PARSER_MAX_DESCRIPTOR_SIZE];
-static size_t s_descriptor_length;
-static hid_parser_report_t s_reports[HID_PARSER_MAX_REPORTS];
-static size_t s_report_count;
-static hid_parser_field_t s_fields[HID_PARSER_MAX_FIELDS];
-static size_t s_field_count;
-static hid_report_cursor_t s_cursors[HID_PARSER_MAX_REPORTS];
-static size_t s_cursor_count;
-static bool s_has_report_ids;
-static bool s_has_unnumbered_reports;
 
 static uint32_t read_unsigned(const uint8_t *data, uint8_t size)
 {
@@ -80,57 +62,52 @@ static int32_t read_signed(const uint8_t *data, uint8_t size)
 static hid_parser_result_t get_report_cursor(
 	hid_report_type_t type,
 	uint8_t report_id,
-	hid_report_cursor_t **cursor,
+	hid_parser_context_t *context,
+	hid_parser_report_cursor_t **cursor,
 	hid_parser_report_t **report)
 {
 	size_t i;
 
-	for (i = 0U; i < s_cursor_count; ++i) {
-		if (s_cursors[i].report_id == report_id &&
-			s_reports[i].type == type) {
-			*cursor = &s_cursors[i];
-			*report = &s_reports[i];
+	for (i = 0U; i < context->cursor_count; ++i) {
+		if (context->cursors[i].report_id == report_id &&
+			context->reports[i].type == type) {
+			*cursor = &context->cursors[i];
+			*report = &context->reports[i];
 			return HID_PARSER_OK;
 		}
 	}
 
-	if (s_cursor_count >= HID_PARSER_MAX_REPORTS) {
+	if (context->cursor_count >= HID_PARSER_MAX_REPORTS) {
 		return HID_PARSER_ERR_CAPACITY;
 	}
 
-	i = s_cursor_count++;
-	memset(&s_cursors[i], 0, sizeof(s_cursors[i]));
-	memset(&s_reports[i], 0, sizeof(s_reports[i]));
-	s_cursors[i].report_id = report_id;
-	s_reports[i].type = type;
-	s_reports[i].report_id = report_id;
-	s_report_count = s_cursor_count;
-	*cursor = &s_cursors[i];
-	*report = &s_reports[i];
+	i = context->cursor_count++;
+	memset(&context->cursors[i], 0, sizeof(context->cursors[i]));
+	memset(&context->reports[i], 0, sizeof(context->reports[i]));
+	context->cursors[i].report_id = report_id;
+	context->reports[i].type = type;
+	context->reports[i].report_id = report_id;
+	context->report_count = context->cursor_count;
+	*cursor = &context->cursors[i];
+	*report = &context->reports[i];
 	return HID_PARSER_OK;
 }
 
-bool hid_parser_init(void)
+void hid_parser_init(hid_parser_context_t *context)
 {
-	s_descriptor_length = 0U;
-	s_report_count = 0U;
-	s_field_count = 0U;
-	s_cursor_count = 0U;
-	s_has_report_ids = false;
-	s_has_unnumbered_reports = false;
-	memset(s_reports, 0, sizeof(s_reports));
-	memset(s_fields, 0, sizeof(s_fields));
-	memset(s_cursors, 0, sizeof(s_cursors));
-	return true;
+	if (context != NULL) {
+		memset(context, 0, sizeof(*context));
+	}
 }
 
 hid_parser_result_t hid_parser_parse_report(
+	hid_parser_context_t *context,
 	const uint8_t *descriptor,
 	size_t length)
 {
 	hid_global_state_t global = { 0 };
-	hid_global_state_t global_stack[HID_GLOBAL_STACK_DEPTH];
-	uint32_t local_usages[HID_LOCAL_USAGE_CAPACITY];
+	hid_global_state_t global_stack[HID_PARSER_GLOBAL_STACK_DEPTH];
+	uint32_t local_usages[HID_PARSER_LOCAL_USAGE_CAPACITY];
 	size_t local_usage_count = 0U;
 	uint32_t local_usage_min = 0U;
 	uint32_t local_usage_max = 0U;
@@ -139,16 +116,16 @@ hid_parser_result_t hid_parser_parse_report(
 	size_t offset = 0U;
 	hid_parser_result_t result = HID_PARSER_OK;
 
-	if (descriptor == NULL || length == 0U) {
+	if (context == NULL || descriptor == NULL || length == 0U) {
 		return HID_PARSER_ERR_ARGUMENT;
 	}
 	if (length > HID_PARSER_MAX_DESCRIPTOR_SIZE) {
 		return HID_PARSER_ERR_DESCRIPTOR_SIZE;
 	}
 
-	hid_parser_init();
-	memcpy(s_descriptor, descriptor, length);
-	s_descriptor_length = length;
+	hid_parser_init(context);
+	memcpy(context->descriptor, descriptor, length);
+	context->descriptor_length = length;
 
 	while (offset < length) {
 		uint8_t prefix = descriptor[offset++];
@@ -249,7 +226,7 @@ hid_parser_result_t hid_parser_parse_report(
 			}
 		} else if (item_type == HID_ITEM_TYPE_MAIN) {
 			if (item_tag == HID_MAIN_COLLECTION) {
-				if (++collection_depth > HID_COLLECTION_DEPTH) {
+				if (++collection_depth > HID_PARSER_COLLECTION_DEPTH) {
 					result = HID_PARSER_ERR_COLLECTION;
 				}
 				local_usage_count = 0U;
@@ -271,34 +248,34 @@ hid_parser_result_t hid_parser_parse_report(
 					(item_tag == HID_MAIN_INPUT) ? HID_REPORT_TYPE_INPUT :
 					(item_tag == HID_MAIN_OUTPUT) ? HID_REPORT_TYPE_OUTPUT :
 					HID_REPORT_TYPE_FEATURE;
-				hid_report_cursor_t *cursor = NULL;
+				hid_parser_report_cursor_t *cursor = NULL;
 				hid_parser_report_t *report = NULL;
 				uint64_t bit_count;
 				hid_parser_field_t *field;
 
-				if ((global.report_id != 0U && s_has_unnumbered_reports) ||
-					(global.report_id == 0U && s_has_report_ids)) {
+				if ((global.report_id != 0U && context->has_unnumbered_reports) ||
+					(global.report_id == 0U && context->has_report_ids)) {
 					result = HID_PARSER_ERR_REPORT_ID_MIX;
 				} else if (global.report_size == 0U ||
 					global.report_count == 0U ||
 					global.report_size > 32U ||
 					global.report_count > 1024U) {
 					result = HID_PARSER_ERR_MALFORMED;
-				} else if ((result = get_report_cursor(type,
+				} else if ((result = get_report_cursor(context, type,
 					global.report_id, &cursor, &report)) == HID_PARSER_OK) {
 					if (global.report_id != 0U) {
-						s_has_report_ids = true;
+						context->has_report_ids = true;
 					} else {
-						s_has_unnumbered_reports = true;
+						context->has_unnumbered_reports = true;
 					}
 					bit_count = (uint64_t)global.report_size *
 						global.report_count;
 					if (bit_count > UINT16_MAX ||
 						(uint64_t)cursor->bit_count + bit_count > UINT16_MAX ||
-						s_field_count >= HID_PARSER_MAX_FIELDS) {
+						context->field_count >= HID_PARSER_MAX_FIELDS) {
 						result = HID_PARSER_ERR_CAPACITY;
 					} else {
-						field = &s_fields[s_field_count++];
+						field = &context->fields[context->field_count++];
 						memset(field, 0, sizeof(*field));
 						field->type = type;
 						field->report_id = global.report_id;
@@ -339,35 +316,44 @@ hid_parser_result_t hid_parser_parse_report(
 	}
 
 	if (result != HID_PARSER_OK) {
-		hid_parser_init();
+		hid_parser_init(context);
 	}
 	return result;
 }
 
-size_t hid_parser_get_report_count(void)
+size_t hid_parser_get_report_count(const hid_parser_context_t *context)
 {
-	return s_report_count;
+	return (context != NULL) ? context->report_count : 0U;
 }
 
-const hid_parser_report_t *hid_parser_get_report(size_t index)
+const hid_parser_report_t *hid_parser_get_report(
+	const hid_parser_context_t *context,
+	size_t index)
 {
-	return (index < s_report_count) ? &s_reports[index] : NULL;
+	return (context != NULL && index < context->report_count) ?
+		&context->reports[index] : NULL;
 }
 
-size_t hid_parser_get_field_count(void)
+size_t hid_parser_get_field_count(const hid_parser_context_t *context)
 {
-	return s_field_count;
+	return (context != NULL) ? context->field_count : 0U;
 }
 
-const hid_parser_field_t *hid_parser_get_field(size_t index)
+const hid_parser_field_t *hid_parser_get_field(
+	const hid_parser_context_t *context,
+	size_t index)
 {
-	return (index < s_field_count) ? &s_fields[index] : NULL;
+	return (context != NULL && index < context->field_count) ?
+		&context->fields[index] : NULL;
 }
 
-const uint8_t *hid_parser_get_descriptor(size_t *length)
+const uint8_t *hid_parser_get_descriptor(
+	const hid_parser_context_t *context,
+	size_t *length)
 {
 	if (length != NULL) {
-		*length = s_descriptor_length;
+		*length = (context != NULL) ? context->descriptor_length : 0U;
 	}
-	return (s_descriptor_length > 0U) ? s_descriptor : NULL;
+	return (context != NULL && context->descriptor_length > 0U) ?
+		context->descriptor : NULL;
 }
