@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This test isolates the ESP32-P4 Full-Speed USB Device path from the USB Host stack and from HID proxy processing. It exposes one standard HID mouse interface and sends four reports after the PC enumerates the device:
+This test isolates the ESP32-P4 Full-Speed USB Device path from the USB Host stack and from HID proxy processing. It exposes one standard HID mouse interface and sends four reports after the PC enumerates the device. Reports are spaced by at least 500 ms so each action is independently observable:
 
 1. Move right by 24 counts.
 2. Move left by 24 counts.
@@ -96,3 +96,19 @@ Observed in Windows USB Device Tree Viewer:
 - Windows parsed an input report length of 6 bytes, with Report ID 1, five buttons, relative X/Y, wheel and AC Pan usages.
 
 This confirms physical USB Device enumeration and successful Windows HID descriptor parsing through the selected USB PHY routing. The USB Device path is therefore proven at enumeration level. Actual cursor movement, button press/release and wheel behavior should be recorded as a separate functional test.
+
+
+## USBPcap analysis and report pacing — 2026-11-15
+
+The supplied USBPcap capture contains successful Interrupt-IN transfers on endpoint `0x81` for all four test reports. The captured payloads include:
+
+- `01 00 18 00 00 00`: Report ID 1, no buttons, X = +24.
+- `01 00 E8 00 00 00`: Report ID 1, no buttons, X = -24.
+- `01 01 00 00 00 00`: left button pressed.
+- `01 00 00 00 00 00`: all buttons released.
+
+The original implementation submitted the reports as soon as TinyUSB became ready again. The positive and negative movement reports were only about 7 ms apart in the capture. This made the two movements difficult to observe separately and could make the sequence appear as though only the negative movement occurred.
+
+The test implementation now waits at least 500 ms after each successfully queued report before submitting the next one. The delay is implemented with `esp_timer_get_time()`; the USB task is not blocked. The report index and delay deadline are reset after device detach.
+
+This pacing change is intended only for the standalone diagnostic test. It does not define the timing policy for normal HID proxy operation.
