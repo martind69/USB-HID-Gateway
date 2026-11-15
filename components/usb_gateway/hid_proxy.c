@@ -2,6 +2,9 @@
 
 #include <string.h>
 
+#include "usb_host_hid.h"
+#include "hid_semantic.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
@@ -9,6 +12,10 @@
 #define HID_PROXY_MAX_REPORT_PAYLOAD 64U
 
 static QueueHandle_t s_raw_report_queue;
+static hid_proxy_forward_callback_t s_output_callback;
+static void *s_output_context;
+static hid_proxy_raw_report_t s_pending_report;
+static bool s_pending_report_valid;
 
 void hid_proxy_init(void)
 {
@@ -19,9 +26,85 @@ void hid_proxy_init(void)
 	}
 }
 
+void hid_proxy_set_output_callback(
+	hid_proxy_forward_callback_t callback,
+	void *context)
+{
+	s_output_callback = callback;
+	s_output_context = context;
+}
+
+static bool hid_proxy_emit_standard_report(
+	uint8_t report_id,
+	const uint8_t *payload,
+	size_t payload_length,
+	void *context)
+{
+	(void)context;
+	if (s_output_callback == NULL) {
+		return false;
+	}
+	return s_output_callback(report_id, payload, payload_length, s_output_context);
+}
+
+bool hid_proxy_enqueue_interface_removed(uint8_t interface_id)
+{
+	hid_proxy_raw_report_t item = { 0 };
+
+	if (s_raw_report_queue == NULL || interface_id == 0U) {
+		return false;
+	}
+	item.interface_id = interface_id;
+	item.length = 0U;
+	return xQueueSend(s_raw_report_queue, &item, 0U) == pdTRUE;
+}
+
 void hid_proxy_process(void)
 {
-	/* The USB Device backend consumes queued reports after descriptor routing is configured. */
+	unsigned int processed = 0U;
+
+	while (processed < 4U) {
+		usb_host_hid_interface_info_t interface_info;
+		bool routed;
+
+		if (!s_pending_report_valid) {
+			if (!hid_proxy_receive_raw_report(&s_pending_report, 0U)) {
+				break;
+			}
+			s_pending_report_valid = true;
+		}
+
+		if (s_pending_report.length == 0U) {
+			hid_semantic_remove_interface(s_pending_report.interface_id,
+				hid_proxy_emit_standard_report, NULL);
+			s_pending_report_valid = false;
+			processed++;
+			continue;
+		}
+
+		if (!usb_host_hid_get_interface_info(
+			s_pending_report.interface_id, &interface_info)) {
+			s_pending_report_valid = false;
+			processed++;
+			continue;
+		}
+
+		routed = hid_semantic_process_input_report(
+			s_pending_report.interface_id,
+			interface_info.parser_context,
+			s_pending_report.data,
+			s_pending_report.length,
+			hid_proxy_emit_standard_report,
+			NULL);
+		if (!routed) {
+			/* Unsupported reports are not translated into the PC-side boot interfaces. */
+			s_pending_report_valid = false;
+			processed++;
+			continue;
+		}
+		s_pending_report_valid = false;
+		processed++;
+	}
 }
 
 bool hid_proxy_enqueue_raw_report(
