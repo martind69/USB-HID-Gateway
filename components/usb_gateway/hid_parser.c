@@ -60,9 +60,9 @@ static int32_t read_signed(const uint8_t *data, uint8_t size)
 }
 
 static hid_parser_result_t get_report_cursor(
+	hid_parser_context_t *context,
 	hid_report_type_t type,
 	uint8_t report_id,
-	hid_parser_context_t *context,
 	hid_parser_report_cursor_t **cursor,
 	hid_parser_report_t **report)
 {
@@ -190,7 +190,7 @@ hid_parser_result_t hid_parser_parse_report(
 				global.report_count = value;
 				break;
 			case HID_GLOBAL_PUSH:
-				if (global_depth >= HID_GLOBAL_STACK_DEPTH) {
+				if (global_depth >= HID_PARSER_GLOBAL_STACK_DEPTH) {
 					result = HID_PARSER_ERR_GLOBAL_STACK;
 				} else {
 					global_stack[global_depth++] = global;
@@ -209,7 +209,7 @@ hid_parser_result_t hid_parser_parse_report(
 		} else if (item_type == HID_ITEM_TYPE_LOCAL) {
 			switch (item_tag) {
 			case HID_LOCAL_USAGE:
-				if (local_usage_count >= HID_LOCAL_USAGE_CAPACITY) {
+				if (local_usage_count >= HID_PARSER_LOCAL_USAGE_CAPACITY) {
 					result = HID_PARSER_ERR_CAPACITY;
 				} else {
 					local_usages[local_usage_count++] = value;
