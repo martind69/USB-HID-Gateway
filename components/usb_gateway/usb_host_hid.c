@@ -72,7 +72,9 @@ static void release_interface(usb_host_hid_interface_t *interface)
 		return;
 	}
 
-	(void)hid_proxy_enqueue_interface_removed(interface->interface_id);
+	if (!hid_proxy_enqueue_interface_removed(interface->interface_id)) {
+		ESP_LOGE(TAG, "Cannot queue interface removal; proxy queue is full");
+	}
 
 	if (interface->opened) {
 		esp_err_t result = hid_host_device_close(interface->handle);
