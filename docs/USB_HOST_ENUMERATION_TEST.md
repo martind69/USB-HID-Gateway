@@ -16,9 +16,9 @@ The firmware:
 
 ## Board routing required for this test
 
-**Do not assume an H3 position from the previous routing description.** The earlier statement that H3=Host is the verified route for USB1–USB3 has been withdrawn: physical testing has shown hub-port activity on USB1–USB3 with H3=Device, while the corrected H3=Host test successfully enumerated the stick only on USB4. The complete U15-to-U14/J8 net mapping is still under investigation.
+**Do not assume an H3 position from the previous routing description.** The earlier statement that H3=Host is the verified route for USB1–USB3 has been withdrawn: physical testing has shown hub-port activity on USB1–USB3 with H3=Device, while the corrected H3=Host test successfully enumerated the stick only on J8 / USBHSD1 (user label 'USB4'). The complete U15-to-U14/J8 net mapping is still under investigation.
 
-The user has reported successful USB-stick enumeration at the location designated USB4. Verify its physical connector designation against the exact board revision; do not assume it is only a test point.
+The user's 'USB4' label refers to J8 / USBHSD1, not a fourth USB-A downstream port.
 
 ## Build configuration
 
@@ -94,7 +94,7 @@ Expected Logitech identities from the existing captures:
 - G815 DE: `046D:C33F`
 - G502 HERO: `046D:C08B`
 
-J8 / USBHSD1 is an alternate U15 branch according to the schematic interpretation; its relation to observed hub-port activity remains unresolved. USB4 is the working port in the corrected H3=Host test; verify its exact physical connector designation.
+J8 / USBHSD1 is the working connection in the corrected H3=Host test (user label 'USB4'). Its relation to observed hub-port activity remains to be reconciled with the complete U15 net mapping.
 
 ## Expected serial output
 
@@ -133,9 +133,9 @@ Corrected USB port test result with H3 in Host mode (2026-11-15):
 | USB1 | No successful enumeration observed |
 | USB2 | No successful enumeration observed |
 | USB3 | No successful enumeration observed |
-| USB4 | Successful enumeration of the USB stick |
+| J8 / USBHSD1 (user label 'USB4') | Successful enumeration of the USB stick |
 
-The earlier report that USB3 enumerated in H3=Host mode was a user correction error and is superseded. USB4 is the working positive-control port for H3=Host. The user's 'USB4' label refers specifically to J8 / USBHSD1, not a USB4 Type-A port or test point.
+The earlier report that USB3 enumerated in H3=Host mode was a user correction error and is superseded. J8 / USBHSD1 (user label 'USB4') is the working positive-control connection for H3=Host. The user's 'USB4' label refers specifically to J8 / USBHSD1, not a USB4 Type-A port or test point.
 
 Additional test with H3 in Device mode (2026-11-15):
 
