@@ -150,3 +150,16 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical USB Device enumeration and HID report delivery are verified on Type-C 6 / USB1P1. Windows identifies VID/PID 303A:4004 as a HID-compliant mouse and loads hidusb.sys/mouhid.sys. A sequential diagonal drag test moved the cursor and held/released the left button as expected; the initial negative X movement was not observed, likely because the first report was sent before Windows finished bringing the mouse online. The remaining sequence executed correctly.
 
 No end-to-end USB Host-to-Device passthrough, USB MSC bridge or G HUB compatibility is claimed.
+
+
+### Device-dependent Full-Speed hub comparison (2026-11-15)
+
+New user test result:
+
+- Full-Speed device `090C:1000` successfully enumerates through the CH334F. The observed log reports address 3, configuration 1 and one interface.
+- Device `8564:1000` successfully enumerates directly at J8 / USBHSD1 but previously failed at the first child EP0 transfer through the CH334F.
+- The CH334F can therefore successfully enumerate at least one Full-Speed child device. A general Full-Speed repeater failure and a purely Low-Speed-specific explanation are no longer leading hypotheses.
+
+The next investigation is a controlled A/B/A comparison on the same CH334F downstream port using `090C:1000` (known-good) and `8564:1000` (known-failing). The Host application now logs `bMaxPacketSize0` (EP0_MPS) and `bcdUSB` for devices that complete enumeration.
+
+Limitation: the application cannot read/log `bMaxPacketSize0` for `8564:1000` when it fails before `USB_HOST_CLIENT_EVENT_NEW_DEV`. The initial 8-byte descriptor payload, actual transfer length/status and handshake must then be captured inside the ESP-IDF enumeration/HCD path or with a USB protocol analyzer. No EP0 sizing, reset timing, PHY or hub-driver changes should be made before that evidence is available.
