@@ -9,5 +9,5 @@ CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST=n
 CONFIG_USB_HOST_HUBS_SUPPORTED=y
 CONFIG_USB_HOST_HUB_MULTI_LEVEL=y
 
-# Diagnostic experiment: add 10 ms between USB Host enumeration stages.
-CONFIG_USB_GATEWAY_ENUMERATION_STAGE_DELAY_MS=10
+# Keep the experimental enumeration-stage delay disabled by default.
+CONFIG_USB_GATEWAY_ENUMERATION_STAGE_DELAY_MS=0
