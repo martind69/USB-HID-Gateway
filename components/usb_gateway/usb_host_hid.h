@@ -24,8 +24,6 @@ typedef struct {
 	uint16_t product_id;
 	bool descriptor_parsed;
 	size_t report_descriptor_length;
-	const uint8_t *report_descriptor;
-	const hid_parser_context_t *parser_context;
 } usb_host_hid_interface_info_t;
 
 esp_err_t usb_host_hid_init(void);
@@ -33,6 +31,14 @@ size_t usb_host_hid_get_interface_count(void);
 bool usb_host_hid_get_interface_info(
 	uint8_t interface_id,
 	usb_host_hid_interface_info_t *info);
+bool usb_host_hid_copy_parser_context(
+	uint8_t interface_id,
+	hid_parser_context_t *context);
+bool usb_host_hid_copy_report_descriptor(
+	uint8_t interface_id,
+	uint8_t *buffer,
+	size_t buffer_capacity,
+	size_t *descriptor_length);
 
 #ifdef __cplusplus
 }
