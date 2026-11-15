@@ -25,7 +25,8 @@ typedef enum {
 	HID_PARSER_ERR_MALFORMED,
 	HID_PARSER_ERR_CAPACITY,
 	HID_PARSER_ERR_GLOBAL_STACK,
-	HID_PARSER_ERR_COLLECTION
+	HID_PARSER_ERR_COLLECTION,
+	HID_PARSER_ERR_REPORT_ID_MIX
 } hid_parser_result_t;
 
 typedef struct {
@@ -33,7 +34,6 @@ typedef struct {
 	uint8_t report_id;
 	uint16_t payload_bits;
 	uint16_t payload_bytes;
-	uint16_t field_first;
 	uint16_t field_count;
 } hid_parser_report_t;
 
