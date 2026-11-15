@@ -174,7 +174,10 @@ static void process_keyboard_fields(
 				}
 				if (value == 1) {
 					rollover = true;
-				} else if (value > 3 && value <= UINT8_MAX) {
+				} else if (value > 3 && value <= UINT8_MAX &&
+						(field->usage_max == 0U ||
+							(uint32_t)value <= field->usage_max) &&
+						(uint32_t)value >= field->usage_min) {
 					if (!add_key(keys, (uint8_t)value)) {
 						rollover = true;
 					}
