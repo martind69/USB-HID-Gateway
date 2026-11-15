@@ -57,7 +57,7 @@ Verification:
 
 ## Milestone 3 – Generic HID 1.11 parser
 
-Current source slice: bounded single-context descriptor parser and keyboard smoke-test source are present. Build/run verification and per-interface contexts remain outstanding.
+Current source slice: bounded caller-owned parser contexts and independent keyboard/mouse context smoke tests are present. Build/run verification and full descriptor semantics remain outstanding.
 
 Tasks:
 1. Define bounded parser contexts, capacities, errors and lifecycle.
@@ -76,6 +76,8 @@ Verification:
 See [HID parser design](HID_PARSER_DESIGN.md).
 
 ## Milestone 4 – Semantic layer and raw HID proxy
+
+Current source slice: Espressif `usb_host_hid` class driver is integrated at source level. It opens discovered HID interfaces, retrieves and stores raw report descriptors, parses each descriptor into its own parser context, and queues raw interrupt-IN reports in a bounded queue. This has not yet been built or run on hardware. The queue is not yet connected to the PC-facing TinyUSB endpoint.
 
 Tasks:
 1. Retain raw descriptor and report context per interface.
@@ -219,8 +221,8 @@ Verification:
 | G502 DPI/profile/lighting protocol | Partially reverse-engineered |
 | Raw HID descriptors | Retrieval pending |
 | G815/G502 Input report captures | Pending |
-| Generic HID parser | Initial bounded parser source and smoke test added; not yet built or executed |
-| USB Host/Device | Placeholder |
+| Generic HID parser | Caller-owned per-interface contexts and keyboard/mouse smoke test source; not yet built or executed |
+| USB Host/Device | Host HID class-driver ingress source added; no PC-side forwarding yet |
 | Semantic layer and report router | Design only |
 | G1 input/LED protocol | Unverified |
 | JSON mapping | Design only |
