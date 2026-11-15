@@ -179,3 +179,17 @@ The user reports that a very brief interruption of the device contacts on the CH
 This confirms that 8564:1000 can enumerate through the CH334F; a fixed device/hub incompatibility is ruled out. The 4.63 s is the interval between the logged failure and success, not the duration of the physical interruption. The observation shifts the leading hypothesis toward connection detection, port-state recovery, debounce/reset sequencing or retry behavior around the initial EP0 transfer. The excerpt does not establish which contact was interrupted or whether success followed a fresh hub connect event or an internal retry.
 
 No Host firmware timing, PHY, fsls_only or hub configuration changes are justified yet. Next capture should timestamp the physical interruption and correlate hub port status/change bits, disconnect/connect, reset start/completion, port enable and the first GET_DESCRIPTOR(Device) SETUP. Do not intentionally short connector contacts.
+
+
+### Configurable USB enumeration timing experiment (2026-11-15)
+
+Prepared a controlled 10 ms enumeration pacing experiment in response to the intermittent initial EP0 failure and the user's observation that reconnecting D+/D- while VBUS remains present can trigger successful detection.
+
+- Added Kconfig option `CONFIG_USB_GATEWAY_ENUMERATION_STAGE_DELAY_MS` (0–100 ms, default 10 ms).
+- Added `scripts/apply_usb_enum_delay.ps1`, an idempotent helper that patches the resolved managed component source at `managed_components/espressif__usb/src/enum.c`.
+- Added `docs/USB_HOST_ENUMERATION_TIMING_EXPERIMENT.md` with apply, A/B test and interpretation instructions.
+- Set the fresh-build default to 10 ms in `sdkconfig.defaults`.
+- The patch inserts the delay before the enumeration state machine advances via `set_next_stage()`. It affects all enumeration-stage transitions, not only the first EP0 request.
+- No reset timing, debounce, PHY mapping, `fsls_only`, hub configuration or board selector setting was changed.
+
+The patch has been committed as a reproducible project script, but it has **not yet been applied to the user's local managed component, compiled, flashed or tested on hardware**. The next step is to run the documented PowerShell script, build, then perform a controlled 0 ms versus 10 ms comparison with at least 10 insertions per setting on the same device and hub port. If 10 ms is ineffective, test 15 ms.
