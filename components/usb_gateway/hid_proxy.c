@@ -19,6 +19,7 @@ static bool s_pending_report_valid;
 
 void hid_proxy_init(void)
 {
+	hid_semantic_init();
 	if (s_raw_report_queue == NULL) {
 		s_raw_report_queue = xQueueCreate(
 			HID_PROXY_RAW_REPORT_QUEUE_LENGTH,
