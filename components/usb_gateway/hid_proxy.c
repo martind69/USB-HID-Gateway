@@ -8,7 +8,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
-#define HID_PROXY_RAW_REPORT_QUEUE_LENGTH 16U
+#define HID_PROXY_RAW_REPORT_QUEUE_LENGTH 24U
+#define HID_PROXY_RAW_REPORT_QUEUE_DATA_LIMIT 16U
 #define HID_PROXY_MAX_REPORT_PAYLOAD 64U
 
 static QueueHandle_t s_raw_report_queue;
@@ -121,7 +122,9 @@ bool hid_proxy_enqueue_raw_report(
 	hid_proxy_raw_report_t item;
 
 	if (s_raw_report_queue == NULL || report == NULL ||
-		report_length == 0U || report_length > sizeof(item.data)) {
+		report_length == 0U || report_length > sizeof(item.data) ||
+		uxQueueMessagesWaiting(s_raw_report_queue) >=
+			HID_PROXY_RAW_REPORT_QUEUE_DATA_LIMIT) {
 		return false;
 	}
 
