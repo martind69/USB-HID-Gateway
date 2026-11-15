@@ -60,7 +60,7 @@ The CH334F is a USB 2.0 four-port hub controller with HS/FS upstream support and
 
 The current logs show downstream hub-port activity and reset attempts, followed by failure of the child's first EP0 control transfer in `CHECK_SHORT_DEV_DESC`. The evidence does not yet identify whether the cause is CH334F port reset/timing, downstream D+/D- signal integrity, CH334F clock/reset/power/strap configuration, or Host/HUB driver interaction.
 
-Next: compare the known-good direct J8 test with one downstream CH334F port at a time; capture full hub debug logs and, if available, D+/D- during reset and the first GET_DESCRIPTOR(Device) request. Check CH334F V5/VDD33, RESET#, 12 MHz clock and PSELF strap against the board schematic. No speculative Host timing or PHY changes are approved yet.
+Next: compare the known-good direct J8 test with one downstream CH334F port at a time; capture full hub debug logs and, if available, D+/D- during reset and the first GET_DESCRIPTOR(Device) request. Check CH334F V5/VDD33, RESET#, 12 MHz clock and PSELF strap against the board schematic. No production Host reset timing or PHY changes are approved. A separately documented 10 ms enumeration-stage pacing experiment is prepared as a controlled diagnostic only.
 
 ## PC-facing USB HID Device proof of concept
 
