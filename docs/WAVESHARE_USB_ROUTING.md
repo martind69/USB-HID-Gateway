@@ -47,7 +47,7 @@ Do not change firmware routing or claim a final H3-to-port mapping yet. The next
 
 ## Test procedure
 
-1. Set H3 to Host mode.
+1. Record the H3 position; test both positions separately while the routing discrepancy remains unresolved.
 2. Connect the board to the PC through Type-C 4 / CH343P for programming and UART logs.
 3. Connect one known-good USB Full-Speed peripheral or USB stick to USB1.
 4. Check the USB Host log for device attach, VID/PID, negotiated speed and configuration interface count.
@@ -71,12 +71,13 @@ A functional USB mass-storage bridge still requires:
 
 - Type-C 4 uses the CH343P USB-to-UART bridge and is the programming/logging connection.
 - Type-C 6 / USB1P1 is a separate ESP32-P4 FS USB connection wired to GPIO24/GPIO25; its PHY assignment is controlled independently in firmware.
-- J8 is the USBHSD1 connector selected in H3 Device mode.
+- J8 is the USBHSD1 connector connected to the alternate U15 branch according to the schematic interpretation; its relationship to the observed H3=Device hub-port activity is not yet reconciled.
 - USB4 is a test point only, not a normal Type-A receptacle.
 
 ## Sources
 
 - Waveshare ESP32-P4-Module-DEV-KIT schematic, SKU 30560.
-- User-confirmed H3 Host/Device truth-table interpretation (2026-11-15).
+- Waveshare ESP32-P4-Module-DEV-KIT schematic, SKU 30560.
+- Physical H3 mode observations supplied by the user (2026-11-15); these currently conflict with the earlier schematic interpretation.
 - [Waveshare board documentation](https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT)
 - [ESP32-P4 USB Host documentation](https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html)
