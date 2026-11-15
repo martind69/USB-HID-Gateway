@@ -73,7 +73,7 @@ Replace `COMx` with the actual CH343P port.
 At startup, expect log messages similar to:
 
 ```text
-USB Host diagnostic ready: H3=HOST, use USB1-USB3; enumeration only
+USB Host diagnostic ready; verify H3 routing against the current hardware test notes; enumeration only
 USB Host controller: HS OTG operating FS/LS-only for hub compatibility
 USB Host client registered; waiting for devices
 ```
@@ -117,11 +117,11 @@ The USB-A host ports must provide valid 5 V VBUS to the attached device/hub. If 
 
 - [ ] Firmware builds with ESP-IDF 6.1 and the mouse-test option disabled.
 - [ ] Host stack starts without an installation error.
-- [ ] USB1 enumerates a directly connected USB stick through U14/CH334F.
+- [ ] USB1 enumerates a directly connected USB stick through the active hub path (exact H3 routing under investigation).
 - [ ] USB2 enumerates the same USB stick.
 - [ ] USB3 enumerates the same USB stick.
 - [ ] Disconnect/removal is reported for each test.
-- [ ] G815 and G502 enumerate through the actual USB1–USB3 hub topology.
+- [ ] G815 and G502 enumerate through the USB1–USB3 hub topology once H3 routing is verified.
 - [ ] PC-facing TinyUSB Device remains operational at the same time.
 
 ## Hardware test result (2026-11-15)
@@ -149,7 +149,7 @@ I (97900) usb_host: USB configuration addr=1 interfaces=1 attributes=0x80
 I (97900) gateway_diag: Host device + addr=1 VID:PID=8564:1000 manufacturer='' product='' interfaces=1 HID=0
 ```
 
-The USB Host diagnostic reported `ready`, one device and zero errors. VID:PID `8564:1000` was enumerated at Full Speed with one configuration interface. This proves that the Host controller, H3 Host routing, U15-to-U14 upstream path and at least one CH334F downstream port (USB3) work for this device.
+The USB Host diagnostic reported `ready`, one device and zero errors. VID:PID `8564:1000` was enumerated at Full Speed with one configuration interface. This proves that the Host controller and at least one path to a CH334F downstream port (USB3) work for this device in the recorded H3=Host test. It does not establish the complete H3/U15 routing.
 
 USB1 and USB2 are not yet diagnosed. The current log does not establish whether those ports lack VBUS, have a connector/data-line issue, or whether the hub reports a port-connect event that fails later in enumeration. Do not attribute the failure to a specific component until per-port VBUS and hub-port status are checked.
 
