@@ -1,6 +1,6 @@
 # USB HID Gateway – Implementation Plan
 
-Status: Planned. A milestone is complete only after its verification criteria pass. The repository currently contains an ESP-IDF skeleton and design/evidence documents; no firmware build or hardware milestone is claimed complete.
+Status: In progress. A milestone is complete only after its verification criteria pass. The repository contains an ESP-IDF firmware skeleton, initial USB transport PoCs and design/evidence documents; no end-to-end HID passthrough milestone is claimed complete.
 
 ## Development principles
 
@@ -56,6 +56,8 @@ Verification:
 - Removing one device does not corrupt another device's state.
 
 ## Milestone 3 – Generic HID 1.11 parser
+
+Current source slice: bounded single-context descriptor parser and keyboard smoke-test source are present. Build/run verification and per-interface contexts remain outstanding.
 
 Tasks:
 1. Define bounded parser contexts, capacities, errors and lifecycle.
@@ -217,7 +219,7 @@ Verification:
 | G502 DPI/profile/lighting protocol | Partially reverse-engineered |
 | Raw HID descriptors | Retrieval pending |
 | G815/G502 Input report captures | Pending |
-| Generic HID parser design | Documented; implementation pending |
+| Generic HID parser | Initial bounded parser source and smoke test added; not yet built or executed |
 | USB Host/Device | Placeholder |
 | Semantic layer and report router | Design only |
 | G1 input/LED protocol | Unverified |
