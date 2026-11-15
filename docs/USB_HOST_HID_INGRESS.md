@@ -46,7 +46,7 @@ Queue overflow is logged and the newest report is dropped. The proxy now transla
 - The PC-facing descriptor remains a fixed keyboard/mouse composite descriptor, not a dynamic mirror of upstream descriptors.
 - The current TinyUSB composite descriptor remains the static standard keyboard/mouse descriptor.
 - Output, Feature and vendor-specific control requests are not forwarded.
-- The host integration has not yet been built with the user's ESP-IDF v6.1 development checkout or tested on the board.
+- The host integration and TinyUSB semantic output path have not yet been built with the user's ESP-IDF v6.1 development checkout or tested on the board.
 - The generic Host diagnostic client and HID class driver both observe the same Host Library. The class driver claims only HID interfaces; the diagnostic client opens devices for descriptor logging but does not claim interfaces.
 
 ## Verification required
