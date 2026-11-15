@@ -4,7 +4,6 @@
 #include "dac_output.h"
 #include "diagnostics.h"
 #include "gpio_output.h"
-#include "hid_parser.h"
 #include "hid_proxy.h"
 #include "hotkey.h"
 #include "mapping.h"
@@ -24,7 +23,6 @@ void usb_gateway_init(void)
 
 	dac_output_init();
 	gpio_output_init();
-	hid_parser_init();
 	hotkey_init();
 
 	if (mapping_result != MAPPING_OK) {
