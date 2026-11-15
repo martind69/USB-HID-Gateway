@@ -23,7 +23,7 @@ Implemented at source level:
 - Opened enumerated devices and logged VID, PID, speed and active configuration interface count.
 - Tracked device disconnects and updated the diagnostics registry.
 
-This is an enumeration-only diagnostic. It does not claim HID interfaces, retrieve HID report descriptors, submit interrupt-IN transfers or forward reports. The source has not yet been built or tested on the physical board.
+The application Host client remains an enumeration/diagnostic client: it logs device descriptors and tracks device lifecycle. HID interface claiming and report reception are handled by the separate Espressif HID Host class driver described below. The latest HID integration has not yet been built or tested on the physical board.
 
 ### USB Host enumeration test preparation (2026-11-15)
 
@@ -130,29 +130,37 @@ A host test source is present at `tests/host/test_mapping.c`, but it is not yet 
 
 The diagnostics component provides a five-second serial summary, bounded host-device registry, proxy counters, I2C health hooks, heap and uptime reporting. Host enumeration and I2C health remain unavailable until their drivers are implemented and connected.
 
-## Generic HID parser – per-interface contexts
-
+## Generic HID parser and semantic forwarding
 
 Files:
 - `components/usb_gateway/hid_parser.h`
 - `components/usb_gateway/hid_parser.c`
 - `tests/host/test_hid_parser.c`
+- `tests/host/test_hid_semantic.c`
 - `docs/HID_PARSER_IMPLEMENTATION.md`
+- `docs/USB_HOST_HID_INGRESS.md`
+- `docs/USB_HID_SEMANTIC_ROUTING.md`
 
 Implemented at source level:
 - Fixed-capacity descriptor storage and parser metadata; no heap allocation.
 - HID short-item decoding and bounded long-item skipping.
 - Input, Output and Feature report layouts with independent bit cursors per Report ID.
 - Basic Global Push/Pop and Collection nesting validation.
-- Field metadata for usage page/usage/range, bit offset, width, count and Main-item flags.
-- Host-side smoke-test source for a boot-style keyboard descriptor.
+- Field metadata for usage page/usage/range, bit offset, width, count, logical range and Main-item flags.
+- Top-level Application collection metadata and bounds-checked signed/unsigned bit extraction.
+- Independent keyboard/mouse parser-context and semantic translation test sources.
+- Espressif `usb_host_hid ~1.2.1` class-driver integration. It opens each HID interface, retrieves the raw report descriptor, parses a per-interface context and starts interrupt-IN report reception.
+- Bounded raw report queue with reserved capacity for interface-removal events.
+- Semantic translation of common keyboard modifiers/key arrays and common mouse buttons, relative X/Y, Wheel and AC Pan into the fixed TinyUSB keyboard/mouse report IDs.
+- Aggregation of held keys/buttons across interfaces, disconnect release reports, endpoint backpressure and PC-detach queue reset.
+- GitHub Actions workflow compiles/runs the host parser and semantic tests.
 
 Not yet verified:
-- The new parser and test have not yet been compiled or executed in the user's ESP-IDF/host environment.
-- The parser now uses caller-owned per-interface contexts.
-- Full HID 1.11 usage semantics, Array slot resolution, bit accessors, parser fuzzing and G815/G502 captured-descriptor tests remain pending.
-- The Espressif USB Host HID class driver is installed alongside the USB Host library. It opens HID interfaces, copies report descriptors, parses per-interface contexts and queues raw interrupt-IN reports. A semantic translator maps common keyboard modifiers/key arrays and mouse buttons/relative axes to the existing TinyUSB keyboard/mouse report IDs. The queue is consumed in task context and retains the pending report while the PC endpoint is busy. Host-side parser and semantic translation tests are present and a GitHub Actions workflow compiles/runs them. The ESP-IDF firmware and hardware path have not yet been built or tested.
-- Raw reports enter a bounded queue in `hid_proxy.c`, are decoded through `hid_semantic.c`, and are submitted to TinyUSB's fixed keyboard/mouse report IDs. Unsupported report formats are not forwarded.
+- The GitHub Actions workflow was added, but its result has not yet been checked.
+- The firmware has not yet been compiled with the user's ESP-IDF 6.1 checkout after these changes.
+- The HID Host and semantic path have not yet been tested with the physical G810/G502 devices.
+- Full HID 1.11 usage semantics, full Array resolution, parser fuzzing and captured-descriptor regression tests remain pending.
+- Unsupported Consumer Control, vendor-defined, Output and Feature reports are not forwarded.
 
 ## Integration still pending
 
@@ -160,10 +168,11 @@ Not yet verified:
 - Verify that Type-C 4 / CH343P remains available for programming and logs after PHY selection.
 - Verify simultaneous USB 2.0 HS Host on USB1–USB3 via U14/CH334F and USB 1.1 FS Device on Type-C 6 after the isolated Device test passes.
 - Resolve the EP0 `CHECK_SHORT_DEV_DESC` transfer error using detailed Host/HUB/port diagnostics in the confirmed selector position.
-- HID Host interface discovery/claiming, report descriptor retrieval and interrupt-IN report reception.
-- Retrieval and storage of raw HID report descriptors.
-- Per-interface generic HID 1.1 parser contexts, full descriptor semantics and parser-populated mapping metadata.
-- USB Device report submission from the proxy router.
+- Dynamic PC-facing HID descriptor generation/mirroring for upstream keyboard, mouse and vendor interfaces.
+- Consumer Control/media keys, volume controls and extra mouse buttons beyond the five exposed by the current PC descriptor.
+- NKRO beyond six simultaneous keyboard keys and full Array/Usage resolution.
+- Upstream Output/Feature report forwarding, HID class control requests and vendor-specific control transfers.
+- Logitech G HUB compatibility, including RGB, profiles, DPI and vendor-defined status/configuration reports.
 - USB Device Output/Feature and vendor control-transfer handling.
 - JSON loading and atomic runtime configuration replacement.
 - WASD vector calculation, mouse shaping and digital action state machines.
@@ -177,7 +186,7 @@ Not yet verified:
 
 The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical USB Device enumeration and HID report delivery are verified on Type-C 6 / USB1P1. Windows identifies VID/PID 303A:4004 as a HID-compliant mouse and loads hidusb.sys/mouhid.sys. A sequential diagonal drag test moved the cursor and held/released the left button as expected; the initial negative X movement was not observed, likely because the first report was sent before Windows finished bringing the mouse online. The remaining sequence executed correctly.
 
-Basic semantic keyboard/mouse forwarding into the fixed TinyUSB report descriptor is implemented at source level. No transparent raw USB passthrough, USB MSC bridge or G HUB compatibility is claimed.
+Basic semantic keyboard/mouse forwarding into the fixed TinyUSB report descriptor is implemented at source level. No transparent raw USB passthrough, USB MSC bridge or G HUB compatibility is claimed. The current source-level changes still require an ESP-IDF build and physical G810/G502 verification.
 
 
 ### Device-dependent Full-Speed hub comparison (2026-11-15)
