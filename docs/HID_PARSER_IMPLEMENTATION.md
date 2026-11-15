@@ -1,6 +1,6 @@
 # Generic HID parser implementation slice
 
-Status: initial bounded descriptor-layout parser implemented; integration and conformance testing remain pending.
+Status: bounded caller-owned per-interface descriptor contexts implemented; integration and conformance testing remain pending.
 
 ## Implemented
 
@@ -15,7 +15,7 @@ Status: initial bounded descriptor-layout parser implemented; integration and co
 
 ## Deliberate limitations of this first slice
 
-- Parser state is currently a single active descriptor context. Per-device/per-interface contexts are the next required change before concurrent HID interfaces can be parsed.
+- Each active USB HID interface owns a caller-allocated parser context. The context must remain alive for the interface lifetime.
 - Usage expansion, Delimiter sets, Designator/String semantics, Physical/Unit metadata and full HID usage-width rules are not yet implemented.
 - Array slot values are not resolved to active usages.
 - Logical ranges are not yet exposed in field metadata.
@@ -24,7 +24,7 @@ Status: initial bounded descriptor-layout parser implemented; integration and co
 
 ## Next integration steps
 
-1. Convert the parser to caller-owned per-interface contexts.
+1. Attach one parser context to each claimed USB HID interface and release it on disconnect.
 2. Add field accessors and Array usage resolution.
 3. Add host-side tests using captured G815/G502 descriptors plus synthetic malformed descriptors.
 4. Integrate the USB Host HID interface lifecycle and interrupt-IN transfers.
