@@ -17,4 +17,4 @@ gcc -std=c11 -Wall -Wextra -Werror -Icomponents/usb_gateway \
 
 The tests cover independent keyboard/mouse parser contexts, report layout,
 bit extraction, standard keyboard/mouse translation and disconnect release.
-They are not yet wired into ESP-IDF CMake or CI.
+They are run by `.github/workflows/host-hid-tests.yml` on pushes and pull requests to `architecture/proxy-motion-gateway`. They are not part of the ESP-IDF target build.
