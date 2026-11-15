@@ -4,6 +4,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 #include "esp_err.h"
 #include "esp_log.h"
@@ -29,6 +30,7 @@ static const char *TAG = "usb_host_hid";
 static usb_host_hid_interface_t s_interfaces[USB_HOST_HID_MAX_INTERFACES];
 static uint8_t s_next_interface_id = 1U;
 static size_t s_interface_count;
+static SemaphoreHandle_t s_interface_mutex;
 
 static usb_host_hid_interface_t *find_interface(
 	hid_host_device_handle_t handle)
@@ -48,6 +50,10 @@ static usb_host_hid_interface_t *allocate_interface(
 {
 	size_t i;
 
+	if (s_interface_mutex == NULL ||
+		xSemaphoreTake(s_interface_mutex, portMAX_DELAY) != pdTRUE) {
+		return NULL;
+	}
 	for (i = 0U; i < USB_HOST_HID_MAX_INTERFACES; ++i) {
 		if (!s_interfaces[i].active) {
 			usb_host_hid_interface_t *interface = &s_interfaces[i];
@@ -61,9 +67,11 @@ static usb_host_hid_interface_t *allocate_interface(
 			}
 			hid_parser_init(&interface->parser);
 			s_interface_count++;
+			xSemaphoreGive(s_interface_mutex);
 			return interface;
 		}
 	}
+	xSemaphoreGive(s_interface_mutex);
 	return NULL;
 }
 
@@ -85,9 +93,13 @@ static void release_interface(usb_host_hid_interface_t *interface)
 		}
 	}
 
-	memset(interface, 0, sizeof(*interface));
-	if (s_interface_count > 0U) {
-		s_interface_count--;
+	if (s_interface_mutex != NULL &&
+		xSemaphoreTake(s_interface_mutex, portMAX_DELAY) == pdTRUE) {
+		memset(interface, 0, sizeof(*interface));
+		if (s_interface_count > 0U) {
+			s_interface_count--;
+		}
+		xSemaphoreGive(s_interface_mutex);
 	}
 }
 
@@ -253,13 +265,24 @@ esp_err_t usb_host_hid_init(void)
 	memset(s_interfaces, 0, sizeof(s_interfaces));
 	s_next_interface_id = 1U;
 	s_interface_count = 0U;
+	s_interface_mutex = xSemaphoreCreateMutex();
+	if (s_interface_mutex == NULL) {
+		return ESP_ERR_NO_MEM;
+	}
 
 	return hid_host_install(&config);
 }
 
 size_t usb_host_hid_get_interface_count(void)
 {
-	return s_interface_count;
+	size_t count = 0U;
+
+	if (s_interface_mutex != NULL &&
+		xSemaphoreTake(s_interface_mutex, portMAX_DELAY) == pdTRUE) {
+		count = s_interface_count;
+		xSemaphoreGive(s_interface_mutex);
+	}
+	return count;
 }
 
 bool usb_host_hid_get_interface_info(
@@ -267,8 +290,10 @@ bool usb_host_hid_get_interface_info(
 	usb_host_hid_interface_info_t *info)
 {
 	size_t i;
+	bool found = false;
 
-	if (info == NULL) {
+	if (info == NULL || s_interface_mutex == NULL ||
+		xSemaphoreTake(s_interface_mutex, portMAX_DELAY) != pdTRUE) {
 		return false;
 	}
 
@@ -285,10 +310,67 @@ bool usb_host_hid_get_interface_info(
 			info->product_id = interface->device_info.PID;
 			info->descriptor_parsed = interface->descriptor_parsed;
 			info->report_descriptor_length = interface->report_descriptor_length;
-			info->report_descriptor = interface->report_descriptor;
-			info->parser_context = &interface->parser;
-			return true;
+			found = true;
+			break;
 		}
 	}
-	return false;
+	xSemaphoreGive(s_interface_mutex);
+	return found;
+}
+
+bool usb_host_hid_copy_parser_context(
+	uint8_t interface_id,
+	hid_parser_context_t *context)
+{
+	size_t i;
+	bool found = false;
+
+	if (context == NULL || s_interface_mutex == NULL ||
+		xSemaphoreTake(s_interface_mutex, portMAX_DELAY) != pdTRUE) {
+		return false;
+	}
+
+	for (i = 0U; i < USB_HOST_HID_MAX_INTERFACES; ++i) {
+		const usb_host_hid_interface_t *interface = &s_interfaces[i];
+
+		if (interface->active && interface->interface_id == interface_id) {
+			memcpy(context, &interface->parser, sizeof(*context));
+			found = true;
+			break;
+		}
+	}
+	xSemaphoreGive(s_interface_mutex);
+	return found;
+}
+
+bool usb_host_hid_copy_report_descriptor(
+	uint8_t interface_id,
+	uint8_t *buffer,
+	size_t buffer_capacity,
+	size_t *descriptor_length)
+{
+	size_t i;
+	bool found = false;
+
+	if (buffer == NULL || descriptor_length == NULL ||
+		s_interface_mutex == NULL ||
+		xSemaphoreTake(s_interface_mutex, portMAX_DELAY) != pdTRUE) {
+		return false;
+	}
+
+	for (i = 0U; i < USB_HOST_HID_MAX_INTERFACES; ++i) {
+		const usb_host_hid_interface_t *interface = &s_interfaces[i];
+
+		if (interface->active && interface->interface_id == interface_id) {
+			*descriptor_length = interface->report_descriptor_length;
+			if (buffer_capacity >= interface->report_descriptor_length) {
+				memcpy(buffer, interface->report_descriptor,
+					interface->report_descriptor_length);
+				found = true;
+			}
+			break;
+		}
+	}
+	xSemaphoreGive(s_interface_mutex);
+	return found;
 }
