@@ -72,6 +72,8 @@ static void release_interface(usb_host_hid_interface_t *interface)
 		return;
 	}
 
+	(void)hid_proxy_enqueue_interface_removed(interface->interface_id);
+
 	if (interface->opened) {
 		esp_err_t result = hid_host_device_close(interface->handle);
 		if (result != ESP_OK) {
@@ -195,7 +197,17 @@ static void hid_host_driver_event_callback(
 			interface->report_descriptor_length = descriptor_length;
 			result = hid_parser_parse_report(
 				&interface->parser, descriptor, descriptor_length);
-			interface->descriptor_parsed = (result == ESP_OK);
+			interface->descriptor_parsed = (result == HID_PARSER_OK);
+			if (interface->parser.top_level_usage_page == 0U &&
+				interface->params.sub_class == 1U) {
+				if (interface->params.proto == 1U) {
+					interface->parser.top_level_usage_page = 0x01U;
+					interface->parser.top_level_usage = 0x06U;
+				} else if (interface->params.proto == 2U) {
+					interface->parser.top_level_usage_page = 0x01U;
+					interface->parser.top_level_usage = 0x02U;
+				}
+			}
 		} else {
 			ESP_LOGW(TAG, "HID report descriptor too large: %u bytes",
 				(unsigned int)descriptor_length);
