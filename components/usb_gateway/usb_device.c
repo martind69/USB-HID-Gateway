@@ -139,11 +139,29 @@ static void usb_device_mouse_test_process(void)
 	const int64_t now_us = esp_timer_get_time();
 
 	/*
-	 * Isolate positive X movement. Do not send an opposite movement or
-	 * button reports in this test; this makes the result independently visible.
+	 * Test sequence:
+	 * 1. Move left by 24 units.
+	 * 2. Press and hold the left mouse button.
+	 * 3. Draw ten diagonal steps (+2 X, +2 Y) while holding the button.
+	 * 4. Release the button.
+	 *
+	 * Each entry is a separate HID report. Relative movements are not summed
+	 * in firmware; the host receives them in this exact sequence.
 	 */
 	static const int8_t reports[][5] = {
-		{ 0, 24, 0, 0, 0 }
+		{ 0, -24, 0, 0, 0 },
+		{ 1, 0, 0, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 1, 2, 2, 0, 0 },
+		{ 0, 0, 0, 0, 0 }
 	};
 	if (s_mouse_test_report_index >= (sizeof(reports) / sizeof(reports[0])) ||
 		now_us < s_mouse_test_next_report_us || !tud_hid_ready()) {
@@ -152,10 +170,11 @@ static void usb_device_mouse_test_process(void)
 
 	if (tud_hid_report(1, reports[s_mouse_test_report_index],
 		sizeof(reports[s_mouse_test_report_index]))) {
-		ESP_LOGI(TAG, "Mouse test report %u sent: X=+24",
-			(unsigned int)(s_mouse_test_report_index + 1));
+		ESP_LOGI(TAG, "Mouse test report %u/%u sent",
+			(unsigned int)(s_mouse_test_report_index + 1),
+			(unsigned int)(sizeof(reports) / sizeof(reports[0])));
 		s_mouse_test_report_index++;
-		s_mouse_test_next_report_us = now_us + 500000;
+		s_mouse_test_next_report_us = now_us + 100000;
 	}
 }
 #endif
