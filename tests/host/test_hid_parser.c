@@ -53,8 +53,8 @@ int main(void)
 	assert(report != NULL && report->type == HID_REPORT_TYPE_OUTPUT);
 	assert(report->payload_bits == 8U && report->payload_bytes == 1U);
 	report = hid_parser_get_report(&mouse_context, 0U);
-	assert(report != NULL && report->payload_bits == 16U);
-	assert(report->payload_bytes == 2U);
+	assert(report != NULL && report->payload_bits == 24U);
+	assert(report->payload_bytes == 3U);
 
 	field = hid_parser_get_field(&keyboard_context, 0U);
 	assert(field != NULL && field->usage_page == 0x07U);
