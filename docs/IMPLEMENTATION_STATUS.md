@@ -177,7 +177,7 @@ Not yet verified:
 
 The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical USB Device enumeration and HID report delivery are verified on Type-C 6 / USB1P1. Windows identifies VID/PID 303A:4004 as a HID-compliant mouse and loads hidusb.sys/mouhid.sys. A sequential diagonal drag test moved the cursor and held/released the left button as expected; the initial negative X movement was not observed, likely because the first report was sent before Windows finished bringing the mouse online. The remaining sequence executed correctly.
 
-No end-to-end USB Host-to-Device passthrough, USB MSC bridge or G HUB compatibility is claimed.
+Basic semantic keyboard/mouse forwarding into the fixed TinyUSB report descriptor is implemented at source level. No transparent raw USB passthrough, USB MSC bridge or G HUB compatibility is claimed.
 
 
 ### Device-dependent Full-Speed hub comparison (2026-11-15)
