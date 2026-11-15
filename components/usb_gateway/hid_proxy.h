@@ -25,9 +25,6 @@ void hid_proxy_process(void);
 void hid_proxy_set_output_callback(
 	hid_proxy_forward_callback_t callback,
 	void *context);
-void hid_proxy_set_output_callback(
-	hid_proxy_forward_callback_t callback,
-	void *context);
 bool hid_proxy_enqueue_interface_removed(uint8_t interface_id);
 bool hid_proxy_enqueue_raw_report(
 	uint8_t interface_id,
