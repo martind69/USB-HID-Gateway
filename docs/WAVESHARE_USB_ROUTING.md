@@ -10,7 +10,7 @@ Date: 2026-11-15
 - H3: USB Host/Device selector; it controls the U15 select input.
 - J8: USBHSD1 connector, with USBHSD1_N and USBHSD1_P signals.
 
-Physical tests are the current source of truth for observed port behavior. The latest correction from the user establishes:
+Physical tests are the current source of truth for observed port behavior. The user has since confirmed that the H3 selector/jumper setting is resolved; the earlier observations below are retained as test history, not as an open selector investigation. The latest corrected observations were:
 
 | H3 position | Physical connection | Observed behavior |
 |---|---|---|
@@ -25,7 +25,7 @@ The user's informal name 'USB4' refers to J8 / USBHSD1. It is not a fourth USB-A
 
 ## H3 mode investigation — physical evidence (2026-11-15)
 
-The earlier recommendation to use H3=Host for USB1–USB3 was based on an incomplete interpretation of the schematic and is withdrawn pending net-level verification.
+The earlier recommendation to use H3=Host for USB1–USB3 was based on an incomplete interpretation of the schematic and is withdrawn. The user has confirmed the selector/jumper setting separately; current work must focus on the failed enumeration transfer in that confirmed setting.
 
 With H3 set to **Device**, the Host stack reports downstream Port1, Port2 and Port3 activity; Port4 remains inactive. The following errors were observed on Port1 and Port2:
 
@@ -45,11 +45,11 @@ These messages prove that the Host stack sees activity on those hub ports and at
 
 The corrected H3=Host observation is that USB4 enumerated VID:PID 8564:1000, while USB1, USB2 and USB3 did not successfully enumerate.
 
-Do not change firmware routing or claim a final H3-to-port mapping yet. The next step is to trace the actual U15 common/select pins and both switched signal pairs through the schematic to U14/J8, then compare that with continuity measurements on the unpowered board.
+Do not revisit selector position as part of the current failure investigation. The next step is to diagnose the EP0 control-transfer failure (`Bad transfer status 1: CHECK_SHORT_DEV_DESC`) with detailed USB Host/HUB logs in the already confirmed setting.
 
 ## Test procedure
 
-1. Record the H3 position; test both positions separately while the routing discrepancy remains unresolved.
+1. Keep H3 in the position already confirmed by the user; do not toggle it during enumeration diagnosis.
 2. Connect the board to the PC through Type-C 4 / CH343P for programming and UART logs.
 3. Connect one known-good USB Full-Speed peripheral or USB stick to USB1.
 4. Check the USB Host log for device attach, VID/PID, negotiated speed and configuration interface count.
@@ -80,6 +80,6 @@ A functional USB mass-storage bridge still requires:
 
 - Waveshare ESP32-P4-Module-DEV-KIT schematic, SKU 30560.
 - Waveshare ESP32-P4-Module-DEV-KIT schematic, SKU 30560.
-- Physical H3 mode observations supplied by the user (2026-11-15); these currently conflict with the earlier schematic interpretation.
+- Physical H3 mode observations supplied by the user (2026-11-15); the selector/jumper setting has since been confirmed by the user.
 - [Waveshare board documentation](https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT)
 - [ESP32-P4 USB Host documentation](https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html)
