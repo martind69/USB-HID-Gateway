@@ -1,6 +1,6 @@
 # Firmware implementation status
 
-Date: 2026-11-14
+Date: 2026-11-15
 
 ## USB Host enumeration diagnostic
 
@@ -20,6 +20,17 @@ Implemented at source level:
 - Tracked device disconnects and updated the diagnostics registry.
 
 This is an enumeration-only diagnostic. It does not claim HID interfaces, retrieve HID report descriptors, submit interrupt-IN transfers or forward reports. The source has not yet been built or tested on the physical board.
+
+### Board routing clarified (2026-11-15)
+
+The Waveshare ESP32-P4-Module-DEV-KIT schematic truth table, confirmed by the user, defines the U15 (FSUSB42UMX) routing:
+
+- H3 = Host: U15 routes USB DM/DP to U14, the CH334F hub. This is the required setting for USB1–USB3 Host inputs.
+- H3 = Device: U15 routes USB DM/DP to J8, USBHSD1_N / USBHSD1_P.
+- USB4 is only a test point (TP), not a normal receptacle.
+- J8 / USBHSD1 is not selected in H3 Host mode and is not used for the USB1–USB3 Host test.
+
+The firmware Host diagnostic must be tested with H3 in Host mode. The routing truth table is documented in `docs/WAVESHARE_USB_ROUTING.md`.
 
 ## PC-facing USB HID Device proof of concept
 
@@ -87,12 +98,10 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 
 ## Integration still pending
 
-- Verify U15 channel-to-signal mapping for both H3 positions on the exact board.
 - Verify that Type-C 6 exposes USB OTG FS on GPIO24/GPIO25 after the runtime PHY selection.
 - Verify that Type-C 4 / CH343P remains available for programming and logs after PHY selection.
-- Build the isolated HID mouse test mode with ESP-IDF 6.1.
-- Verify Windows enumeration and the four HID mouse reports on the physical board.
-- Verify simultaneous USB 2.0 HS Host on Type-A and USB 1.1 FS Device on Type-C 6 after the isolated Device test passes.
+- Verify simultaneous USB 2.0 HS Host on USB1–USB3 via U14/CH334F and USB 1.1 FS Device on Type-C 6 after the isolated Device test passes.
+- Test Host enumeration independently on USB1, USB2 and USB3 with H3 set to Host.
 - HID Host interface discovery/claiming, report descriptor retrieval and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
 - Generic HID 1.1 parser and parser-populated mapping metadata.
@@ -104,23 +113,10 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 - Keyboard Array rollover and mixed-report reconstruction tests.
 - ADC/DAC/GPIO hardware drivers and electrical validation.
 - End-to-end passthrough and G HUB compatibility tests.
+- USB MSC Host + Device bridge and SCSI/Bulk-Only Transport forwarding for USB-stick passthrough.
 
 ## Build and verification
 
-The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical USB Device enumeration is now verified on Type-C 6 / USB1P1. Windows identifies VID/PID 303A:4004 as a HID-compliant mouse and loads hidusb.sys/mouhid.sys. The HID interface exposes Interrupt IN endpoint 0x81 at 1 ms and a 6-byte input report with Report ID 1. Functional cursor/button/wheel behavior remains to be explicitly verified.
+The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical USB Device enumeration and HID report delivery are verified on Type-C 6 / USB1P1. Windows identifies VID/PID 303A:4004 as a HID-compliant mouse and loads hidusb.sys/mouhid.sys. A sequential diagonal drag test moved the cursor and held/released the left button as expected; the initial negative X movement was not observed, likely because the first report was sent before Windows finished bringing the mouse online. The remaining sequence executed correctly.
 
-Do not mark the USB Device milestone complete until the firmware builds, the correct PHY is assigned to the Type-C 6 connector, Windows enumerates the HID mouse after reconnects, and Type-C 4 / CH343P remains available for programming and logs.
-
-No end-to-end USB Host-to-Device passthrough or G HUB compatibility is claimed.
-
-### Standalone HID mouse — hardware enumeration verified (2026-11-14)
-
-Windows USB Device Tree Viewer confirms the ESP32-P4 enumerates on Type-C 6 / USB1P1 as:
-
-- VID/PID `303A:4004`, product `USB HID Gateway Mouse Test`
-- Full-Speed USB 2.0
-- HID mouse interface, Interrupt IN endpoint `0x81`, 1 ms interval
-- HID report descriptor length 79 bytes; Windows reports a 6-byte input report with Report ID 1
-- Windows HID stack loaded successfully (`hidusb.sys`, `mouhid.sys`)
-
-Enumeration and descriptor parsing are verified. Functional movement and button/wheel event delivery still need an explicit test.
+No end-to-end USB Host-to-Device passthrough, USB MSC bridge or G HUB compatibility is claimed.
