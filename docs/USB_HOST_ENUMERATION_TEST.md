@@ -16,10 +16,7 @@ The firmware:
 
 ## Board routing required for this test
 
-Set H3 to **Host** mode. According to the Waveshare schematic truth table, H3 controls U15 (FSUSB42UMX):
-
-- H3 Host: U15 routes USB DM/DP to U14, the CH334F hub. This is the required route for USB1, USB2 and USB3.
-- H3 Device: U15 routes USB DM/DP to J8 (USBHSD1_N / USBHSD1_P). This is not the required route for the USB-A hub-port test.
+**Do not assume an H3 position from the previous routing description.** The earlier statement that H3=Host is the verified route for USB1–USB3 has been withdrawn: physical testing has shown hub-port activity on USB1–USB3 with H3=Device, while the earlier H3=Host test successfully enumerated the stick only on USB3. The complete U15-to-U14/J8 net mapping is still under investigation.
 
 USB4 is only a test point (TP), not a normal USB-A receptacle.
 
@@ -81,11 +78,11 @@ USB Host controller: HS OTG operating FS/LS-only for hub compatibility
 USB Host client registered; waiting for devices
 ```
 
-The firmware cannot electrically detect the H3 jumper position. The H3=HOST log is a test instruction, not a jumper-state measurement.
+The firmware cannot electrically detect the H3 jumper position. Any H3 mode in a startup log is an instruction only, not a jumper-state measurement.
 
 ## Hardware test
 
-1. Set H3 to **Host** mode.
+1. Record the H3 position used for this test. Until the routing discrepancy is resolved, test both positions separately and do not infer the route from the silkscreen label alone.
 2. Confirm that the board's USB-A VBUS supply is enabled and provides 5 V.
 3. Connect one known-good USB stick to USB1.
 4. Wait for the device enumeration log. Record VID, PID, speed and interface count.
@@ -129,13 +126,19 @@ The USB-A host ports must provide valid 5 V VBUS to the attached device/hub. If 
 
 ## Hardware test result (2026-11-15)
 
-First USB-A port test with H3 in Host mode:
+Initial USB-A port test with H3 in Host mode:
 
 | Physical port | Result |
 |---|---|
 | USB1 | No successful enumeration observed |
 | USB2 | No successful enumeration observed |
 | USB3 | Successful enumeration |
+
+Additional test with H3 in Device mode (2026-11-15):
+
+- The Host stack reports downstream Port1, Port2 and Port3 activity; Port4 remains inactive.
+- Port1 and Port2 do not complete enumeration. The short Device Descriptor control transfer fails with `CHECK_SHORT_DEV_DESC FAILED`, and each port is disabled while still connected.
+- This is evidence of hub-port activity, not successful device enumeration.
 
 USB3 UART output:
 
@@ -159,7 +162,7 @@ USB1 and USB2 are not yet diagnosed. The current log does not establish whether 
 5. If VBUS is present and stable, inspect the CH334F downstream port routing/connector soldering and capture the full boot and attach log for each port.
 6. Record whether the host emits any hub-port connect, reset, enable or disconnect event for USB1/USB2. The current application-level log only reports successfully enumerated child devices and does not yet expose all hub-port state transitions.
 
-Do not change USB Host firmware or mux routing solely on the basis of this first port comparison. USB3 is a proven positive control.
+Do not change USB Host firmware or mux routing solely on the basis of these observations. USB3 is a proven positive control in the earlier H3=Host test. The H3-to-port mapping must first be reconciled with the complete schematic nets and physical continuity measurements.
 
 ## Not implemented in this milestone
 
