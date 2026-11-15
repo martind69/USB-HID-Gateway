@@ -8,4 +8,14 @@ config USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 		After enumeration, send a short right/left movement and one left click.
 		The USB Host stack is not started in this mode.
 
+config USB_GATEWAY_ENUMERATION_STAGE_DELAY_MS
+	int "USB Host enumeration stage delay (ms)"
+	default 10
+	range 0 100
+	help
+		Diagnostic delay inserted between USB Host enumeration state-machine
+		stages in the patched espressif/usb component. Set to 0 to disable.
+		This option has no effect until scripts/apply_usb_enum_delay.ps1 has
+		patched the managed component source.
+
 endmenu
