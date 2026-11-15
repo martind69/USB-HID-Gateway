@@ -9,7 +9,7 @@ The firmware:
 - Runs the required library daemon and client event tasks.
 - Enables external hub support, including multi-level hubs.
 - Opens each enumerated device and logs VID, PID, bus speed and active configuration interface count.
-- Tracks disconnects and updates runtime diagnostics.
+- Logs device removal and handles disconnects.
 - Does not claim HID interfaces or submit interrupt transfers.
 - Does not forward reports to the PC-facing TinyUSB device.
 - Does not implement USB Mass Storage Class passthrough.
@@ -21,41 +21,77 @@ Set H3 to **Host** mode. According to the Waveshare schematic truth table, H3 co
 - H3 Host: U15 routes USB DM/DP to U14, the CH334F hub. This is the required route for USB1, USB2 and USB3.
 - H3 Device: U15 routes USB DM/DP to J8 (USBHSD1_N / USBHSD1_P). This is not the required route for the USB-A hub-port test.
 
-USB4 is only a test point (TP), not a normal USB-A receptacle. Do not follow earlier instructions referring to a direct USB4 Type-A socket.
+USB4 is only a test point (TP), not a normal USB-A receptacle.
 
-## Speed mode and hub limitation
+## Build configuration
 
-The host controller is explicitly selected with `peripheral_map = BIT0` (USB 2.0 High-Speed OTG on ESP32-P4) and configured with `fsls_only = true`. The target Logitech G815/G502 devices were observed as Full-Speed devices. Espressif documents that the external hub driver currently has no Transaction Translator layer, so Full-/Low-Speed devices behind a High-Speed hub are not supported in normal High-Speed mode. The HS controller must therefore be operated as an FS/LS-only host for this test.
+The standalone HID mouse test mode must be disabled because it deliberately skips `usb_host_init()`.
 
-This sacrifices High-Speed operation on the host bus during this diagnostic milestone. Do not interpret this as the final throughput configuration.
+The repository default is now:
 
-## Build
-
-Use the ESP-IDF version selected by the repository setup (ESP-IDF 6.1):
-
-```powershell
-idf.py set-target esp32p4
-idf.py reconfigure
-idf.py build
+```text
+CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST=n
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
+CONFIG_USB_HOST_HUB_MULTI_LEVEL=y
 ```
 
-The managed USB Host dependency is pinned to `espressif/usb ~1.6.0`; this release provides the `fsls_only` host configuration used here.
+For the existing Windows build directory, explicitly change the active configuration. Do not rely only on `sdkconfig.defaults`, because an existing `sdkconfig` can retain its previous value.
 
-Flash using the CH343P UART connector (Type-C 4), not the Type-C 6 USB Serial/JTAG connection:
+From an ESP-IDF 6.1 PowerShell environment in the repository root:
 
 ```powershell
-idf.py -p COMx flash monitor
+idf.py -B build/default menuconfig
 ```
+
+Open **Component config -> USB HID Gateway** and clear **Standalone USB Device HID mouse test mode**. Save and exit. Then build:
+
+```powershell
+idf.py -B build/default reconfigure
+idf.py -B build/default build
+```
+
+Alternatively, edit `build/default/sdkconfig` and set:
+
+```text
+CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST=n
+```
+
+Then run `idf.py -B build/default reconfigure` and `idf.py -B build/default build`.
+
+The managed USB Host dependency is pinned to `espressif/usb ~1.6.0`. This component release requires ESP-IDF 5.5.3 or later; the user's ESP-IDF 6.1 environment satisfies that minimum.
+
+## Flash and monitor
+
+1. Connect Type-C 4 (CH343P) to the PC for flashing and UART output.
+2. Do not use Type-C 6 as the flashing connection for this test.
+3. Identify the CH343P COM port in Windows Device Manager.
+4. Flash and start the monitor:
+
+```powershell
+idf.py -B build/default -p COMx flash monitor
+```
+
+Replace `COMx` with the actual CH343P port.
+
+At startup, expect log messages similar to:
+
+```text
+USB Host diagnostic ready: H3=HOST, use USB1-USB3; enumeration only
+USB Host controller: HS OTG operating FS/LS-only for hub compatibility
+USB Host client registered; waiting for devices
+```
+
+The firmware cannot electrically detect the H3 jumper position. The H3=HOST log is a test instruction, not a jumper-state measurement.
 
 ## Hardware test
 
-1. Connect Type-C 4 to the PC for flashing and serial output.
-2. Set H3 to **Host** mode.
-3. Connect one known-good USB Full-Speed device or USB stick to USB1.
-4. Confirm the log reports a new device address, VID/PID, speed and configuration interface count.
-5. Repeat independently with the same device on USB2 and USB3.
-6. Connect the G815 and G502 through the intended USB1–USB3 hub path and record both VID/PID values and interface counts.
-7. Record the exact H3 state and the physical port used with every log.
+1. Set H3 to **Host** mode.
+2. Confirm that the board's USB-A VBUS supply is enabled and provides 5 V.
+3. Connect one known-good USB stick to USB1.
+4. Wait for the device enumeration log. Record VID, PID, speed and interface count.
+5. Disconnect the stick and confirm the removal/disconnect log.
+6. Repeat the same stick on USB2 and USB3, one port at a time.
+7. If all three ports work, test the Logitech G815 and G502 through the intended USB1–USB3 hub path.
 
 Expected Logitech identities from the existing captures:
 - G815 DE: `046D:C33F`
@@ -63,34 +99,50 @@ Expected Logitech identities from the existing captures:
 
 J8 / USBHSD1 is the alternate U15 Device-mode branch and is not used in this Host-mode test. USB4 is a test point, not a socket.
 
+## Expected serial output
+
+The exact address and VID/PID depend on the USB stick. The important fields are:
+
+```text
+Device enumerated, address=<n>
+USB device addr=<n> VID=<vid> PID=<pid> speed=FS configuration=<n>
+USB configuration addr=<n> interfaces=<n> attributes=<hex>
+Device removed, address=<n>
+```
+
+A USB stick will usually enumerate as a Full-Speed device in this test because the Host controller is configured with `fsls_only = true`. This forces High-Speed-capable devices to negotiate at Full Speed and is needed for Full-/Low-Speed devices behind a High-Speed hub when the hub path has no Transaction Translator support.
+
 ## Power
 
 The USB-A host ports must provide valid 5 V VBUS to the attached device/hub. If the board does not enable host VBUS automatically, the board's VBUS power-switch circuit must be enabled according to the Waveshare schematic. Do not externally inject 5 V into a port that is already powered.
 
 ## Acceptance criteria
 
-- [ ] Firmware builds with the selected ESP-IDF version.
+- [ ] Firmware builds with ESP-IDF 6.1 and the mouse-test option disabled.
 - [ ] Host stack starts without an installation error.
-- [ ] USB1 enumerates a directly connected Full-Speed device through U14/CH334F.
-- [ ] USB2 enumerates the same device.
-- [ ] USB3 enumerates the same device.
-- [ ] Disconnect is detected and the device is closed cleanly.
+- [ ] USB1 enumerates a directly connected USB stick through U14/CH334F.
+- [ ] USB2 enumerates the same USB stick.
+- [ ] USB3 enumerates the same USB stick.
+- [ ] Disconnect/removal is reported for each test.
 - [ ] G815 and G502 enumerate through the actual USB1–USB3 hub topology.
 - [ ] PC-facing TinyUSB Device remains operational at the same time.
 
 ## Not implemented in this milestone
 
+- USB Mass Storage Class driver and volume mounting.
+- SCSI command handling and Bulk-Only Transport.
+- PC-facing USB Device MSC interface.
+- USB-stick block-device passthrough to the PC.
 - HID interface discovery and claiming.
 - HID report descriptor retrieval.
 - Interrupt-IN report transfers.
 - Generic HID parsing from live devices.
 - Host-to-Device report forwarding.
 - USB vendor/control-transfer proxying or G HUB compatibility.
-- USB MSC bridge, SCSI command forwarding or block-level passthrough.
 
 ## References
 
 - [Waveshare USB routing assessment](WAVESHARE_USB_ROUTING.md)
 - [ESP-IDF ESP32-P4 USB Host documentation](https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_host.html)
-- [Espressif USB Host Library example](https://github.com/espressif/esp-idf/tree/master/examples/peripherals/usb/host/usb_host_lib)
+- [Espressif USB Host Library source](https://github.com/espressif/esp-usb/blob/master/host/usb/include/usb/usb_host.h)
 - [ESP Component Registry: espressif/usb 1.6.0](https://components.espressif.com/components/espressif/usb/versions/1.6.0)
