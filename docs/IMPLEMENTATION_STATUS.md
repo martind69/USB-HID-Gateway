@@ -52,6 +52,16 @@ The active issue is the failed EP0 control transfer during `CHECK_SHORT_DEV_DESC
 - The updated firmware has not yet been built or tested on the board. The next required evidence is a full DEBUG UART capture from boot through failure, with the selector left in its already confirmed position.
 - Do not bypass the failed initial descriptor transfer or change `fsls_only`, PHY mapping, hub settings or reset timings until the detailed trace identifies the failing layer.
 
+### CH334F is the primary fault domain (2026-11-15)
+
+The user confirmed that the only relevant difference between the working direct USB-stick connection at J8 / USBHSD1 and the failing USB-A downstream connections is the CH334F hub path. The selector/jumper setting is resolved and is not to be revisited.
+
+The CH334F is a USB 2.0 four-port hub controller with HS/FS upstream support and MTT capability. The ESP32-P4 Host uses `fsls_only = true`, intentionally forcing the hub's upstream connection to Full Speed so Full-/Low-Speed devices can be reached without relying on the ESP-IDF Host stack's unsupported TT layer for a High-Speed hub.
+
+The current logs show downstream hub-port activity and reset attempts, followed by failure of the child's first EP0 control transfer in `CHECK_SHORT_DEV_DESC`. The evidence does not yet identify whether the cause is CH334F port reset/timing, downstream D+/D- signal integrity, CH334F clock/reset/power/strap configuration, or Host/HUB driver interaction.
+
+Next: compare the known-good direct J8 test with one downstream CH334F port at a time; capture full hub debug logs and, if available, D+/D- during reset and the first GET_DESCRIPTOR(Device) request. Check CH334F V5/VDD33, RESET#, 12 MHz clock and PSELF strap against the board schematic. No speculative Host timing or PHY changes are approved yet.
+
 ## PC-facing USB HID Device proof of concept
 
 Files:
