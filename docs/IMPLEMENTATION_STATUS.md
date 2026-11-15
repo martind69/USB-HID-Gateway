@@ -193,3 +193,15 @@ Prepared a controlled 10 ms enumeration pacing experiment in response to the int
 - No reset timing, debounce, PHY mapping, `fsls_only`, hub configuration or board selector setting was changed.
 
 The patch has been committed as a reproducible project script, but it has **not yet been applied to the user's local managed component, compiled, flashed or tested on hardware**. The next step is to run the documented PowerShell script, build, then perform a controlled 0 ms versus 10 ms comparison with at least 10 insertions per setting on the same device and hub port. If 10 ms is ineffective, test 15 ms.
+
+
+### Broad enumeration delay test result (2026-11-15)
+
+The user tested enumeration-stage delays from 10 ms through 50 ms. No change in the failure behavior was observed. The broad delay experiment is negative and should not be extended to larger values.
+
+- Changed the Kconfig default to 0 ms.
+- Changed `sdkconfig.defaults` to keep the experimental delay disabled by default.
+- Retained the optional Kconfig control and idempotent patch helper for future targeted testing.
+- No reset-hold, reset-recovery, debounce, PHY, `fsls_only`, hub configuration or board routing changes were made.
+
+Next: instrument hub port status/change bits, reset completion and port enable, plus the first 8-byte `GET_DESCRIPTOR(Device)` control transfer. Capture the SETUP packet, HCD status, actual length, received descriptor bytes, channel errors and monotonic timestamps. If possible, correlate with a D+/D- capture at the CH334F downstream port. The current evidence does not justify further global delay changes.
