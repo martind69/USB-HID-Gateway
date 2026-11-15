@@ -261,6 +261,12 @@ static void usb_host_client_task(void *arg)
 
 void usb_host_init(void)
 {
+	/* Enable USB stack diagnostics before installing the Host Library. */
+	esp_log_level_set("USBH", ESP_LOG_DEBUG);
+	esp_log_level_set("ENUM", ESP_LOG_DEBUG);
+	esp_log_level_set("HUB", ESP_LOG_DEBUG);
+	esp_log_level_set("EXT_PORT", ESP_LOG_DEBUG);
+
 	const usb_host_config_t host_config = {
 		/*
 		 * BIT0 selects the USB 2.0 High-Speed OTG controller on ESP32-P4.
@@ -310,7 +316,7 @@ void usb_host_init(void)
 
 	diagnostics_set_host_state(DIAG_STATE_READY, ESP_OK);
 	ESP_LOGI(TAG,
-		"USB Host diagnostic ready: H3=HOST, use USB1-USB3; enumeration only");
+		"USB Host diagnostic ready; verify the confirmed board selector setting; enumeration only");
 	ESP_LOGI(TAG,
 		"USB Host controller: HS OTG operating FS/LS-only for hub compatibility");
 }
