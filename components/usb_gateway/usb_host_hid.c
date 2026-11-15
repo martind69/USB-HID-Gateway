@@ -210,9 +210,9 @@ static void hid_host_driver_event_callback(
 		if (descriptor_length <= sizeof(interface->report_descriptor)) {
 			memcpy(interface->report_descriptor, descriptor, descriptor_length);
 			interface->report_descriptor_length = descriptor_length;
-			result = hid_parser_parse_report(
+			hid_parser_result_t parser_result = hid_parser_parse_report(
 				&interface->parser, descriptor, descriptor_length);
-			interface->descriptor_parsed = (result == HID_PARSER_OK);
+			interface->descriptor_parsed = (parser_result == HID_PARSER_OK);
 			if (interface->parser.top_level_usage_page == 0U &&
 				interface->params.sub_class == 1U) {
 				if (interface->params.proto == 1U) {
