@@ -362,3 +362,21 @@ If repeating this observation, record:
 - The complete UART trace around the disconnect, port-change event, reset, port-enable and first EP0 request.
 
 The most useful firmware instrumentation is the hub downstream port status/change bitmap and timestamps for disconnect/connect, reset start/completion, port enable and first GET_DESCRIPTOR(Device) SETUP. Keep the current Host PHY, fsls_only, hub configuration and reset timing unchanged until this sequence is visible.
+
+
+## Configurable enumeration timing experiment (2026-11-15)
+
+The user reports that during slow insertion VBUS is present before D+/D- make contact, but the first enumeration attempt can still fail. Briefly interrupting and reconnecting the data contacts while VBUS remains present can trigger successful enumeration. This does not establish whether the cause is device startup, hub-port state timing, signal integrity, or Host/HUB scheduling.
+
+A controlled diagnostic delay has now been prepared:
+
+- Kconfig: `CONFIG_USB_GATEWAY_ENUMERATION_STAGE_DELAY_MS` (range 0–100 ms, default 10 ms).
+- The delay is inserted before `set_next_stage()` in `enum_process()` of managed component `espressif/usb`.
+- Apply it after dependency resolution with `idf.py -B build/default reconfigure`, then run `.\scripts\apply_usb_enum_delay.ps1`, then build.
+- The patch helper is idempotent and modifies `managed_components/espressif__usb/src/enum.c`. Re-run it if the managed component is reinstalled or updated.
+- The 10 ms delay is between all enumeration stages, not only the initial Device Descriptor request. It is a diagnostic pacing experiment and adds enumeration latency.
+- Set the Kconfig value to 0 for the unmodified timing baseline. Keep reset-hold, reset-recovery, debounce, PHY, `fsls_only` and hub configuration unchanged.
+
+Run at least 10 insertions with 0 ms and at least 10 with 10 ms, using the same `8564:1000` device and the same CH334F downstream port. Compare failure rates and preserve full UART logs. If 10 ms does not improve reliability, test 15 ms as the second step.
+
+This is not yet built or tested on the physical board. See `docs/USB_HOST_ENUMERATION_TIMING_EXPERIMENT.md` for the complete procedure and limitations.
