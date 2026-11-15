@@ -102,7 +102,7 @@ void hid_proxy_process(void)
 			break;
 		}
 		if (route_result != HID_SEMANTIC_OK) {
-			/* Preserve unknown reports for later vendor-specific handling. */
+			/* Unknown report formats are not translated in this implementation stage. */
 			s_pending_report_valid = false;
 			processed++;
 			continue;
