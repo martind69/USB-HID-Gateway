@@ -135,7 +135,7 @@ Corrected USB port test result with H3 in Host mode (2026-11-15):
 | USB3 | No successful enumeration observed |
 | USB4 | Successful enumeration of the USB stick |
 
-The earlier report that USB3 enumerated in H3=Host mode was a user correction error and is superseded. USB4 is the working positive-control port for H3=Host. The earlier claim that USB4 is only a test point must be verified against the exact board revision/connector designation; the user has physically connected a stick at the location identified as USB4 and observed successful enumeration.
+The earlier report that USB3 enumerated in H3=Host mode was a user correction error and is superseded. USB4 is the working positive-control port for H3=Host. The user's 'USB4' label refers specifically to J8 / USBHSD1, not a USB4 Type-A port or test point.
 
 Additional test with H3 in Device mode (2026-11-15):
 
@@ -152,7 +152,7 @@ I (97900) usb_host: USB configuration addr=1 interfaces=1 attributes=0x80
 I (97900) gateway_diag: Host device + addr=1 VID:PID=8564:1000 manufacturer='' product='' interfaces=1 HID=0
 ```
 
-The USB Host diagnostic reported `ready`, one device and zero errors. VID:PID `8564:1000` was enumerated at Full Speed with one configuration interface. This proves that the Host controller and at least one path to the active hub/port path identified as USB4 work for this device in the corrected H3=Host test. It does not establish the complete H3/U15 routing.
+The USB Host diagnostic reported `ready`, one device and zero errors. VID:PID `8564:1000` was enumerated at Full Speed with one configuration interface on J8 / USBHSD1 (called 'USB4' by the user) in H3=Host mode. This proves that the Host controller and the selected U15-to-J8 path work for this device. It does not establish the complete H3/U15 routing.
 
 USB1 and USB2 are not yet diagnosed. The current log does not establish whether those ports lack VBUS, have a connector/data-line issue, or whether the hub reports a port-connect event that fails later in enumeration. Do not attribute the failure to a specific component until per-port VBUS and hub-port status are checked.
 
@@ -165,7 +165,7 @@ USB1 and USB2 are not yet diagnosed. The current log does not establish whether 
 5. If VBUS is present and stable, inspect the CH334F downstream port routing/connector soldering and capture the full boot and attach log for each port.
 6. Record whether the host emits any hub-port connect, reset, enable or disconnect event for USB1/USB2. The current application-level log only reports successfully enumerated child devices and does not yet expose all hub-port state transitions.
 
-Do not change USB Host firmware or mux routing solely on the basis of these observations. USB4 is the proven positive control in the corrected H3=Host test. The H3-to-port mapping must first be reconciled with the complete schematic nets and physical continuity measurements.
+Do not change USB Host firmware or mux routing solely on the basis of these observations. J8 / USBHSD1 (user label 'USB4') is the proven positive control in the corrected H3=Host test. The H3-to-port mapping must first be reconciled with the complete schematic nets and physical continuity measurements.
 
 ## Not implemented in this milestone
 
