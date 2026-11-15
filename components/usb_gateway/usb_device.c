@@ -253,9 +253,11 @@ void usb_device_process(void)
 	if (mounted != s_was_mounted) {
 		s_was_mounted = mounted;
 		if (mounted) {
+			hid_proxy_set_output_enabled(true);
 			ESP_LOGI(TAG, "PC enumerated USB HID Gateway");
 			diagnostics_set_device_state(DIAG_STATE_CONNECTED, ESP_OK);
 		} else {
+			hid_proxy_set_output_enabled(false);
 			ESP_LOGI(TAG, "PC USB HID connection detached");
 #if CONFIG_USB_GATEWAY_USB_DEVICE_MOUSE_TEST
 			s_mouse_test_report_index = 0;
