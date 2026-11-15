@@ -10,24 +10,40 @@ Date: 2026-11-15
 - H3: USB Host/Device selector; it controls the U15 select input.
 - J8: USBHSD1 connector, with USBHSD1_N and USBHSD1_P signals.
 
-The board schematic's U15 truth table and the user's confirmation establish the routing:
+The schematic truth table was previously interpreted as a definitive mapping of the complete USB-A port topology. That interpretation is now disputed by physical testing and must not be used as the sole basis for selecting H3.
 
-| H3 position | U15 signal destination | Result |
-|---|---|---|
-| Host | U14, CH334F USB hub | USB DM/DP are routed to the hub IC. The USB1–USB3 downstream ports are available on the host-side hub path. |
-| Device | J8, USBHSD1_N / USBHSD1_P | USB DM/DP are routed directly to the USBHSD1 connector. |
+| H3 position | Observed behavior on the assembled board |
+|---|---|
+| Device | The Host stack reports activity on downstream Port1, Port2 and Port3. Port4 is inactive. Port1/Port2 currently fail during the initial device-descriptor read; see the test log below. |
+| Host | In the earlier test, USB3 successfully enumerated the USB stick, while USB1 and USB2 did not successfully enumerate it. |
+
+The exact electrical route from H3/U15 to the hub and connectors remains to be reconciled against the complete schematic nets and the physical board. Until that reconciliation is complete, do not describe either H3 label as a verified routing truth for USB1–USB3.
 
 This corrects earlier repository descriptions that referred to a USB4 Type-A socket or an unverified direct Type-A route. There is no normal USB4 receptacle: USB4 is only exposed as a test point (TP). Do not describe USB4 as a user-connectable port.
 
-## Intended gateway configuration
+## H3 mode investigation — physical evidence (2026-11-15)
 
-For the USB HID Gateway's peripheral-facing host connection, set H3 to **Host**:
+The earlier recommendation to use H3=Host for USB1–USB3 was based on an incomplete interpretation of the schematic and is withdrawn pending net-level verification.
 
-ESP32-P4 USB Host signal path -> U15 (FSUSB42UMX, Host selection) -> U14 (CH334F hub) -> USB1 / USB2 / USB3.
+With H3 set to **Device**, the Host stack reports downstream Port1, Port2 and Port3 activity; Port4 remains inactive. The following errors were observed on Port1 and Port2:
 
-In this configuration, J8 / USBHSD1 is not selected by U15 and is not part of the active USB Host path. The J8 connector is the alternate Device-mode branch.
+```text
+E (175400) USBH: Dev 0 EP 0 Error
+E (175400) ENUM: Bad transfer status 1: CHECK_SHORT_DEV_DESC
+E (175400) ENUM: CHECK_SHORT_DEV_DESC FAILED
+W (175400) EXT_PORT: Port1 disabled while connected, reset attempts=1
+I (175400) usb_host: Device removed, address=0
+E (180990) USBH: Dev 0 EP 0 Error
+E (180990) ENUM: Bad transfer status 1: CHECK_SHORT_DEV_DESC
+E (180990) ENUM: CHECK_SHORT_DEV_DESC FAILED
+W (180990) EXT_PORT: Port2 disabled while connected, reset attempts=1
+```
 
-The firmware's USB Host controller must be connected to the signal input side of U15 as shown in the board schematic. The board's H3 label defines the mux routing mode; it does not by itself prove that firmware has successfully initialized the USB Host controller.
+These messages prove that the Host stack sees activity on those hub ports and attempts enumeration. They do **not** prove successful device enumeration: the control transfer for the short Device Descriptor fails, after which the port is disabled while still connected.
+
+The earlier H3=Host test remains a separate observation: USB3 enumerated VID:PID 8564:1000, while USB1 and USB2 did not successfully enumerate.
+
+Do not change firmware routing or claim a final H3-to-port mapping yet. The next step is to trace the actual U15 common/select pins and both switched signal pairs through the schematic to U14/J8, then compare that with continuity measurements on the unpowered board.
 
 ## Test procedure
 
