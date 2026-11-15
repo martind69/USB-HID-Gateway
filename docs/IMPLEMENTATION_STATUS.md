@@ -126,6 +126,29 @@ A host test source is present at `tests/host/test_mapping.c`, but it is not yet 
 
 The diagnostics component provides a five-second serial summary, bounded host-device registry, proxy counters, I2C health hooks, heap and uptime reporting. Host enumeration and I2C health remain unavailable until their drivers are implemented and connected.
 
+## Generic HID parser – initial implementation slice
+
+Files:
+- `components/usb_gateway/hid_parser.h`
+- `components/usb_gateway/hid_parser.c`
+- `tests/host/test_hid_parser.c`
+- `docs/HID_PARSER_IMPLEMENTATION.md`
+
+Implemented at source level:
+- Fixed-capacity descriptor storage and parser metadata; no heap allocation.
+- HID short-item decoding and bounded long-item skipping.
+- Input, Output and Feature report layouts with independent bit cursors per Report ID.
+- Basic Global Push/Pop and Collection nesting validation.
+- Field metadata for usage page/usage/range, bit offset, width, count and Main-item flags.
+- Host-side smoke-test source for a boot-style keyboard descriptor.
+
+Not yet verified:
+- The new parser and test have not yet been compiled or executed in the user's ESP-IDF/host environment.
+- The parser is currently a single global context, not yet suitable for concurrent per-interface descriptors.
+- Full HID 1.11 usage semantics, Array slot resolution, bit accessors, parser fuzzing and G815/G502 captured-descriptor tests remain pending.
+- No USB Host HID interface claiming, report-descriptor retrieval or interrupt-IN report reception has been integrated.
+- No parser output is yet connected to `mapping.c`, `hid_proxy.c` or TinyUSB Device report submission.
+
 ## Integration still pending
 
 - Verify that Type-C 6 exposes USB OTG FS on GPIO24/GPIO25 after the runtime PHY selection.
@@ -134,7 +157,7 @@ The diagnostics component provides a five-second serial summary, bounded host-de
 - Resolve the EP0 `CHECK_SHORT_DEV_DESC` transfer error using detailed Host/HUB/port diagnostics in the confirmed selector position.
 - HID Host interface discovery/claiming, report descriptor retrieval and interrupt-IN report reception.
 - Retrieval and storage of raw HID report descriptors.
-- Generic HID 1.1 parser and parser-populated mapping metadata.
+- Per-interface generic HID 1.1 parser contexts, full descriptor semantics and parser-populated mapping metadata.
 - USB Device report submission from the proxy router.
 - USB Device Output/Feature and vendor control-transfer handling.
 - JSON loading and atomic runtime configuration replacement.
