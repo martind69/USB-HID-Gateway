@@ -65,7 +65,7 @@ void hid_proxy_process(void)
 
 	while (processed < 4U) {
 		usb_host_hid_interface_info_t interface_info;
-		bool routed;
+		hid_semantic_result_t route_result;
 
 		if (!s_pending_report_valid) {
 			if (!hid_proxy_receive_raw_report(&s_pending_report, 0U)) {
@@ -75,8 +75,10 @@ void hid_proxy_process(void)
 		}
 
 		if (s_pending_report.length == 0U) {
-			hid_semantic_remove_interface(s_pending_report.interface_id,
-				hid_proxy_emit_standard_report, NULL);
+			if (!hid_semantic_remove_interface(s_pending_report.interface_id,
+				hid_proxy_emit_standard_report, NULL)) {
+				break;
+			}
 			s_pending_report_valid = false;
 			processed++;
 			continue;
@@ -89,15 +91,18 @@ void hid_proxy_process(void)
 			continue;
 		}
 
-		routed = hid_semantic_process_input_report(
+		route_result = hid_semantic_process_input_report(
 			s_pending_report.interface_id,
 			interface_info.parser_context,
 			s_pending_report.data,
 			s_pending_report.length,
 			hid_proxy_emit_standard_report,
 			NULL);
-		if (!routed) {
-			/* Unsupported reports are not translated into the PC-side boot interfaces. */
+		if (route_result == HID_SEMANTIC_OUTPUT_BUSY) {
+			break;
+		}
+		if (route_result != HID_SEMANTIC_OK) {
+			/* Preserve unknown reports for later vendor-specific handling. */
 			s_pending_report_valid = false;
 			processed++;
 			continue;
