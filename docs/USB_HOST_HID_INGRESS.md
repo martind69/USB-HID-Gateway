@@ -20,7 +20,7 @@ For each HID interface reported by the class driver:
 6. Parse the descriptor into that interface's own `hid_parser_context_t`.
 7. Start interrupt-IN report reception.
 8. Copy each raw report into the bounded proxy ingress queue.
-9. On disconnect, close the interface and release its slot.
+9. On disconnect, close the interface and release its slot. A mutex protects interface metadata and parser-context snapshots shared with the gateway task.
 
 No SET_PROTOCOL(BOOT) or SET_IDLE request is issued by this integration. This avoids forcing devices away from their report protocol while vendor-specific reports and G HUB compatibility are still under investigation.
 
@@ -39,6 +39,10 @@ Queue overflow is logged and the newest report is dropped. The proxy now transla
 - Keyboard: modifier bits and standard 6-key Array reports are translated to an 8-byte boot-style keyboard report. Multiple keyboard interfaces are merged; disconnect generates releases.
 - Mouse: Button usages 1–8, relative X/Y and Wheel, plus Consumer AC Pan, are translated to the standard 5-byte TinyUSB mouse report. Multiple mouse interfaces contribute to the merged button state.
 - Report ID is removed before field decoding and the parser's report layout is checked before translation.
+
+## Interface snapshots
+
+Interface metadata and parser contexts are copied under a FreeRTOS mutex before semantic decoding. The gateway task does not parse directly from a context that the HID Host callback may clear during disconnect. The raw report descriptor can also be copied through a bounded accessor for the later dynamic-descriptor stage.
 
 ## Deliberate limitations
 
