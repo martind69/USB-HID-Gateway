@@ -13,6 +13,8 @@
  * state and calling tud_control_xfer() or tud_control_status() after the
  * downstream USB Host transfer completes. It must not block the TinyUSB task.
  */
+void tud_defer_func(void (*func)(void *), void *param);
+
 bool tud_control_request_cb(
 	uint8_t rhport,
 	uint8_t stage,
