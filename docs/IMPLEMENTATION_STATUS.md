@@ -342,3 +342,16 @@ A first standalone CH55xduino sketch has been added at `firmware/qt_py_memory_te
 Build settings: CH552 Board, internal 16 MHz / 3.3 V, P3.6 D+ bootloader pin, USB RAM profile `user148`. The ch55xduino README documents 148 bytes reserved for USB endpoint RAM and 876 bytes remaining xRAM under this profile. The CH552 provides 16 KiB program ROM, 256 bytes internal iRAM and 1 KiB xRAM. These are capacity figures, not a measured build result.
 
 The keyboard profile is only a temporary standard-HID stand-in. It does not implement G815/G502 descriptors or vendor control/report traffic, so its memory report is a lower-bound infrastructure measurement, not proof that the final Logitech emulator fits. No compiler is available in the current execution environment; the sketch has not been compiled, flashed or tested. Capture the ch55xduino compiler summary and generated map/mem files before drawing a capacity conclusion. No flash/configuration update is implemented.
+
+
+### CH552 G815 composite USB target profile (2026-11-16)
+
+The device allocation is now fixed for the next implementation stage: the CH552 QT Py emulates the Logitech G815 (`046D:C33F`); the ESP32-P4 emulates the G502 HERO (`046D:C08B`). This keeps the G502 regular mouse interrupt-IN report path (8-byte reports, approximately 1,000 reports/s in the supplied active capture excerpt) directly on the P4 rather than adding the CH552/SPI hop.
+
+The supplied `DESCRIPTORs.pcapng` descriptor summary identifies the G815 as a 59-byte configuration with two HID interfaces: interface 0 is boot keyboard (65-byte HID report descriptor, endpoint 0x81 IN, 8-byte maximum packet, bInterval=1); interface 1 is vendor-defined HID (188-byte HID report descriptor, endpoint 0x82 IN, 64-byte maximum packet, bInterval=1). Both endpoints must be active concurrently. At Full Speed, bInterval=1 requests a 1 ms polling interval.
+
+The sketch now records these target properties as inventory constants, but its current ch55xduino USBHIDKeyboard library remains a temporary single-interface stand-in. The constants do not implement the G815 descriptors. The exact HID report-descriptor byte arrays have not yet been extracted; they must be taken from the capture rather than guessed.
+
+Added `docs/CH552_G815_USB_PROFILE.md` with the target descriptor profile and acceptance criteria. Updated the QT Py memory-baseline README and boot-sequence documentation. The next meaningful memory gate is a compile of the actual two-interface G815 profile with EP0, 8-byte endpoint 0x81, 64-byte endpoint 0x82, exact report descriptors, SPI manager and BOOT_REQ code. Endpoint RAM must be measured using the selected USB stack's actual allocation rules; do not infer it from packet sizes alone.
+
+Status: device allocation and descriptor-derived target requirements documented; composite USB implementation, exact report-descriptor extraction, ROM/RAM measurement, compilation, flashing, hardware validation and G HUB compatibility remain outstanding.
