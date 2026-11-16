@@ -293,7 +293,7 @@ Status: **architecture documented; no CH552 firmware, P4 update-manager code, PC
 
 The interface now includes a dedicated ESP32-P4 GPIO connected to the QT Py RESET pad / CH552 RST input. The QT Py remains continuously powered during normal operation and firmware updates.
 
-Electrical semantics are active HIGH: drive RST HIGH for the verified reset pulse, then LOW to release. The Adafruit QT Py is treated as delivered with En_RST_RESET=1. The full 16-bit Configuration Information Word at flash addresses 0x3FFE/0x3FFF is immutable project configuration: preserve every bit exactly, including bCODE_PROTECT (15), bBOOT_LOAD (14), bDEBUG_EN (13), En_RST_RESET (12), bLDO_VSEL (11:10), bDATA_FLASH_P (9), bOSC_EN_XT (8), and all lower bits. The WCH raw-chip default for En_RST_RESET differs from the Adafruit QT Py factory state. Neither the application image nor the P4 update manager may erase or rewrite any part of this word. External reset restarts execution at address 0; it is not treated as a guaranteed UART-ISP entry mechanism. BOOT_REQ remains a separate application-assisted ROM-bootloader handoff.
+Electrical semantics are active HIGH: drive RST HIGH for the verified reset pulse, then LOW to release. The writable 16-bit CH552 Configuration Information Word is at 0x3FF8/0x3FF9; 0x3FFE/0x3FFF are the final factory chip-ID word, not configuration bits. Preserve the complete configuration word and all factory chip-ID words at 0x3FFA–0x3FFF unchanged. The Adafruit QT Py is treated as delivered with En_RST_RESET=1, while WCH raw-chip recommendations differ. Neither the application image nor the P4 update manager may erase or rewrite the configuration or chip-ID area. External reset restarts execution at address 0; it is not treated as a guaranteed UART-ISP entry mechanism. BOOT_REQ remains a separate application-assisted ROM-bootloader handoff.
 
 The previous recommendation to use supply cycling as the normal reset/update mechanism is superseded. Cold power removal is now only a separate service/bring-up condition and must account for all QT Py supply paths, including USB VBUS. The WCH datasheet specifies a minimum external reset pulse width of 70 ns; the documented P4 firmware starting value is a conservative 1 ms pulse, subject to QT Py bench validation.
 
@@ -311,3 +311,14 @@ The P4 UART1 updater still requires protocol/source review. Its flash and erase 
 
 
 Configuration reference update (2026-11-16): `docs/CH552_BOOT_SEQUENCE.md` now records the complete documented bit assignments for the upper byte of the Configuration Information Word and explicitly reserves bits 7–0 as unspecified in this project summary. The entire word, not just En_RST_RESET, must be preserved unchanged. No programmer has yet been approved as safe for this requirement.
+
+
+### CH552 UART ISP source review (2026-11-16)
+
+The ch55xduino documentation confirms UART1 ISP support for CH552 (CH551 excluded) and an application-assisted interrupt handoff into the ROM bootloader. The UNIT-Electronics platform recipe passes `-s {serial.port}` to `vnproch55x`, but the executable's source/behavior was not available for inspection in this review.
+
+The inspected LoveMHz `vnproch55x` `main.cpp` is USB-only (libusb, VID:PID 4348:55E0), uses a fixed 10 KiB image, issues erase command `A4 01 00 08`, then writes from address zero. Its erase scope is not decoded in the source; it does not prove preservation of configuration or chip-ID addresses. Do not treat this source as the serial uploader implementation.
+
+Important datasheet correction: writable Configuration Information is at 0x3FF8/0x3FF9. Addresses 0x3FFA–0x3FFF hold factory chip-ID words; 0x3FFE/0x3FFF are the final ID word. The configuration fields in Table 6.2 are Code_Protect, No_Boot_Load, En_Long_Reset, En_RST_RESET, reserved bits 11:10, Must_1 bit 9, Must_0 bit 8, and All_1 bits 7:0. The prior documentation incorrectly described 0x3FFE/0x3FFF as the configuration word and used several incorrect field names; this has been corrected in CH552_BOOT_SEQUENCE.md.
+
+Status: UART1 capability confirmed by ch55xduino documentation; exact serial uploader implementation, UART protocol, erase scope and preservation of configuration/ID areas remain unverified. Automatic P4 flashing remains prohibited until those points are established.
