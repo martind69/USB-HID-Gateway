@@ -368,3 +368,19 @@ G815 vendor collections:
 - Report ID `0x12`: `0x1F8` bits = 63 report-data bytes (64 bytes including Report ID).
 
 These lengths align with the observed 20-byte and 64-byte vendor report sizes. Exact endpoint routing still requires correlation with the USB transfer capture. The raw 65-byte and 188-byte interface-level report descriptor streams remain to be extracted from USB `GET_DESCRIPTOR(Report)` responses. No descriptor implementation, compilation, memory measurement, flashing or hardware validation is claimed from this capture alone.
+
+
+## CH552 G815 memory probe expansion (2026-11-16)
+
+The QT Py memory-sizing sketch now includes the intended P4-to-CH552 report-path staging footprint in addition to the existing SPI identity exchange:
+
+- 72-byte maximum request frame (6-byte header + 64-byte payload + 2-byte CRC);
+- 17-byte identity/command response;
+- 8-byte keyboard report staging buffer;
+- 64-byte vendor report staging buffer.
+
+This increases the explicit xRAM staging allocation from 25 bytes to 161 bytes. The existing two-interface USB endpoint DMA reservation remains separate and is provided by the ch55xduino `user148` profile. The new buffers are a memory-sizing probe; the variable-length SPI report transport and second USB IN endpoint are not yet implemented.
+
+The G815 report-descriptor arrays reconstructed by the user are now treated as provisional implementation data rather than a blocker for memory feasibility. The raw 65-byte and 188-byte USB report-descriptor streams remain desirable for later byte-exact refinement.
+
+**Next:** compile the expanded sketch with the selected ch55xduino package and `user148` setting. Record code ROM, xRAM, internal RAM/stack and map-file endpoint allocation. Then replace the temporary keyboard-only USB implementation with a CH552 dual-interface implementation using EP0 plus two independent interrupt-IN endpoints (8-byte keyboard and 64-byte vendor). No compile, flash or hardware test is claimed for the expanded memory probe.
