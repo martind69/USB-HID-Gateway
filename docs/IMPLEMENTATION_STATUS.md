@@ -26,11 +26,11 @@ Date: 2026-11-15
 
 ### Confirmed upstream device identity requirement (2026-11-16)
 
-The user confirmed that the PC must enumerate the G810 and G502 as two separate USB devices with their original VID/PID values and independent USB device addresses. A single composite proxy device is rejected.
+The user confirmed that the PC must enumerate the G815 and G502 as two separate USB devices with their original VID/PID values and independent USB device addresses. A single composite proxy device is rejected.
 
 The current P4 allocation uses one OTG controller as Host and one as Device. The preferred hardware direction for feasibility work is to retain these roles, add a second independently programmable USB Device MCU/controller, and connect both upstream Device controllers to a new PC-facing USB hub. The P4 remains the sole owner of the downstream Logitech Host bus; the second Device MCU receives control transactions and raw endpoint payloads over an inter-processor link. This architecture is not yet implemented or hardware-validated.
 
-The PC-facing hub would expose two separate child devices but may change the original parent/port topology. Since the G502 is physically behind the G810's internal hub/pass-through, the internal hub identity and hierarchy must be inspected before claiming full G HUB compatibility. Do not continue with a merged composite descriptor. See `docs/USB_UPSTREAM_MULTI_DEVICE_ARCHITECTURE.md` and `docs/USB_PROXY_IMPLEMENTATION.md`.
+The PC-facing hub would expose two separate child devices but adds a hub node to the path. The observed topology places G815 and G502 as siblings behind the ASUS monitor's Genesys Logic hub (05E3:0610); the G815 pass-through is cable-only, not an internal hub. G HUB compatibility still requires checking whether the new hub/port path matters. Do not model G502 as a child of a G815 hub or continue with a merged composite descriptor. See `docs/USB_UPSTREAM_MULTI_DEVICE_ARCHITECTURE.md` and `docs/USB_PROXY_IMPLEMENTATION.md`.
 
 ## Current work focus
 
@@ -188,7 +188,7 @@ Implemented at source level:
 Not yet verified:
 - The GitHub Actions workflow was added, but its result has not yet been checked.
 - The firmware has not yet been compiled with the user's ESP-IDF 6.1 checkout after these changes.
-- The HID Host and semantic path have not yet been tested with the physical G810/G502 devices.
+- The HID Host and semantic path have not yet been tested with the physical G815/G502 devices.
 - Full HID 1.11 usage semantics, full Array resolution, parser fuzzing and captured-descriptor regression tests remain pending.
 - Unsupported Consumer Control, vendor-defined, Output and Feature reports are not forwarded.
 
@@ -216,7 +216,7 @@ Not yet verified:
 
 The user has confirmed a successful ESP-IDF 6.1 build with standalone mouse test mode enabled. The runtime PHY selection and corrected HID report API are committed to the project branch. Physical USB Device enumeration and HID report delivery are verified on Type-C 6 / USB1P1. Windows identifies VID/PID 303A:4004 as a HID-compliant mouse and loads hidusb.sys/mouhid.sys. A sequential diagonal drag test moved the cursor and held/released the left button as expected; the initial negative X movement was not observed, likely because the first report was sent before Windows finished bringing the mouse online. The remaining sequence executed correctly.
 
-Basic semantic keyboard/mouse forwarding into the fixed TinyUSB report descriptor is implemented at source level. No transparent raw USB passthrough, USB MSC bridge or G HUB compatibility is claimed. The current source-level changes still require an ESP-IDF build and physical G810/G502 verification.
+Basic semantic keyboard/mouse forwarding into the fixed TinyUSB report descriptor is implemented at source level. No transparent raw USB passthrough, USB MSC bridge or G HUB compatibility is claimed. The current source-level changes still require an ESP-IDF build and physical G815/G502 verification.
 
 
 ### Device-dependent Full-Speed hub comparison (2026-11-15)
