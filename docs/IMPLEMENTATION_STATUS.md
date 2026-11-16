@@ -1,5 +1,25 @@
 # Firmware implementation status
 
+# USB proxy implementation progress (2026-11-16)
+
+A first host-independent Configuration descriptor model has been added:
+
+- `usb_proxy_descriptor.h/.c` stores a bounded copy of the complete Configuration descriptor stream.
+- Parses interface descriptors including alternate settings, HID class descriptors and report-descriptor lengths, and endpoint descriptors.
+- Validates descriptor bounds, declared endpoint counts, unique interface count, endpoint zero/reserved address bits and duplicate endpoint addresses within one interface alternate setting.
+- Exposes lookups for interface/alternate-setting and endpoint mappings.
+- Added host-side tests and CI compilation with `-Wall -Wextra -Werror -pedantic`.
+
+This is the descriptor-model foundation only. It is not yet connected to the Host device lifecycle or TinyUSB descriptor callbacks. The current Espressif HID Host class driver still owns HID interfaces; raw endpoint transport and generic EP0 forwarding are not implemented. No target build or hardware test is claimed for this increment.
+
+Next implementation work:
+1. Integrate a per-downstream-device descriptor snapshot into the existing Host client without allocating one full model per possible USB address.
+2. Replace `usb_host_hid` interface ownership with a proxy-owned interface/endpoint manager.
+3. Generate and publish the upstream Full-Speed descriptor set before connecting the Device port.
+4. Add raw interrupt IN/OUT forwarding.
+5. Pin and patch the exact TinyUSB version used by `esp_tinyusb ~3.0.0` to expose all upstream SETUP requests to the asynchronous EP0 bridge.
+
+
 Date: 2026-11-15
 
 ## Current work focus
