@@ -123,7 +123,7 @@ The CH552 documentation states that the ISP bootloader runs first after power-on
 
 The BOOT_REQ interrupt handler and handoff code are mandatory for reliable serial re-entry from the running application. They must be implemented in the CH552 application and tested before the P4 update manager is considered complete.
 
-### State C — UART_ISP_PROGRAM
+### State D — UART_ISP_PROGRAM
 
 1. Keep SPI disabled.
 2. Transfer the CH552 application image through UART1.
@@ -131,9 +131,9 @@ The BOOT_REQ interrupt handler and handoff code are mandatory for reliable seria
 4. Treat any timeout, negative response or checksum error as a failed update.
 5. Do not record the new firmware version as installed until programming has completed and the application has subsequently passed its runtime handshake.
 
-On successful completion, leave the ROM bootloader using the exit mechanism supported by the detected bootloader revision. The ch55xduino documentation lists the exit sequence 57 AB A2 01 00 01 A4 at 57600 baud. Confirm that the selected ISP tool and bootloader revision use this sequence before hard-coding it into P4 firmware.
+Programming is complete only after the selected ISP tool reports a successful final verification.
 
-### State D — RETURN_TO_APPLICATION
+### State E — RETURN_TO_APPLICATION
 
 1. After successful programming, send the bootloader exit command supported by the detected bootloader revision.
 2. Disable P4 UART and set its TX/RX pins to high impedance.
@@ -142,7 +142,7 @@ On successful completion, leave the ROM bootloader using the exit mechanism supp
 
 The ch55xduino documentation lists the exit sequence 57 AB A2 01 00 01 A4 at 57600 baud. Confirm that the selected ISP tool and bootloader revision use this sequence before hard-coding it into P4 firmware.
 
-### State E — SPI_RUNTIME
+### State F — SPI_RUNTIME
 
 P4 is SPI master; CH552 is SPI slave.
 
@@ -156,7 +156,7 @@ P4 is SPI master; CH552 is SPI slave.
 
 Start with a conservative SPI clock (1 MHz is the initial bench target). Increase only after signal-integrity and protocol tests.
 
-### State F — UPDATE_REQUIRED
+### State G — UPDATE_REQUIRED
 
 Firmware version comparison is performed after the CH552 application responds over SPI.
 
