@@ -120,11 +120,12 @@ usb_proxy_descriptor_result_t usb_proxy_configuration_parse(
 	offset = descriptor[0];
 	while (offset < descriptor_length) {
 		const uint8_t item_length = descriptor[offset];
-		const uint8_t item_type = descriptor[offset + 1U];
+		uint8_t item_type;
 
 		if (item_length < 2U || item_length > descriptor_length - offset) {
 			return USB_PROXY_DESC_ERR_LENGTH;
 		}
+		item_type = descriptor[offset + 1U];
 
 		switch (item_type) {
 		case USB_DESC_TYPE_INTERFACE:
