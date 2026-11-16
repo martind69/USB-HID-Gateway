@@ -38,3 +38,14 @@ jobs:
 
       - name: Run HID semantic tests
         run: ./test_hid_semantic
+
+      - name: Compile USB proxy descriptor tests
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/usb_gateway \
+            components/usb_gateway/usb_proxy_descriptor.c \
+            tests/host/test_usb_proxy_descriptor.c \
+            -o test_usb_proxy_descriptor
+
+      - name: Run USB proxy descriptor tests
+        run: ./test_usb_proxy_descriptor
