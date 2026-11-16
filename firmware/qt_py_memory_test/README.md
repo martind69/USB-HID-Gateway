@@ -65,3 +65,12 @@ Do not estimate endpoint memory by merely adding 8 + 64 bytes. The USB controlle
 - The current USB VID/PID and descriptors are those of the temporary ch55xduino keyboard profile, not the Logitech G815.
 - Descriptor enumeration is not proof of Logitech G HUB compatibility.
 - No compilation, flashing, hardware test or G HUB test is claimed.
+
+
+## Additional G815 HID collection evidence
+
+The supplied WinHidDump output is documented in [G815 WinHidDump collections](../../docs/captures/G815_WINHIDDUMP_COLLECTIONS.md). It identifies the physical G815's Windows HID collections, including vendor Report ID `0x11` (20 bytes including ID) and Report ID `0x12` (64 bytes including ID).
+
+These are collection-level descriptors returned/reconstructed by Windows, not necessarily the raw interface-level report descriptor streams. The USB configuration capture still identifies 65 bytes for interface 0 and 188 bytes for interface 1. The separate 460-byte `HID VHF Driver` descriptor is not the physical Logitech G815 descriptor.
+
+The exact raw 65-byte and 188-byte interface descriptors must still be captured from USB `GET_DESCRIPTOR(Report)` before implementing the final composite USB descriptors. No descriptor code or memory estimate should be based on concatenating the Windows collection descriptors.
