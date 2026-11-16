@@ -326,3 +326,10 @@ Important datasheet correction: writable Configuration Information is at 0x3FF8/
 Status: UART1 capability, 57600-baud framing and the A8 configuration-write hazard are source-confirmed. The stock UNIT-Electronics serial recipe omits -c KEEP and is not approved. The erase command's physical coverage and preservation of 0x3FF8–0x3FFF remain unverified. Automatic P4 flashing remains prohibited.
 
 The serial programmer source review uses [DeqingSun/vnproch551](https://github.com/DeqingSun/vnproch551), while the installed package recipe is defined separately in [UNIT-Electronics platform.txt](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt). Do not assume the binary shipped in a particular package release is byte-for-byte identical to the reviewed source without checking its version/build provenance.
+
+
+### CH552 management framework scaffold (2026-11-16)
+
+Added `components/usb_gateway/ch552_manager.c` and `include/ch552_manager.h`, registered in the ESP-IDF component. The P4-side API defines a callback-based SPI transport and validates a compact application identity response (protocol revision, firmware version, build ID, status, capabilities and CRC16). The request/response protocol is documented in `docs/CH552_BOOT_SEQUENCE.md`.
+
+The update API is deliberately fail-closed and returns `ESP_ERR_NOT_SUPPORTED`; it performs no UART or flash operation. The actual CH552 SPI slave, board-specific P4 transport integration, read-only ROM ISP probe and safe flash backend remain outstanding. The ROM erase range is still unverified, so automatic flashing is prohibited. No build, unit test or hardware test is claimed.
