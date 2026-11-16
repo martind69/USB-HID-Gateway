@@ -40,7 +40,7 @@ The CH552 core is operated at 3.3 V:
 
 For normal firmware updates, use the application-assisted BOOT_REQ handoff; do not power-cycle the module as the routine update mechanism. A controlled cold start is a separate recovery method and is valid only when all supply paths are actually interrupted. If a load switch is retained for exceptional service isolation, it must default to the selected safe state during P4 reset and must not allow P4 signal pins to back-power an unpowered CH552. It is not part of normal reset or update operation.
 
-The QT Py RESET button is connected to the CH552 RST input. The RST input is active HIGH, has an internal pull-down, and is disabled as a manual reset input by the default configuration bit En_RST_RESET=0. The application image/programming configuration must explicitly set En_RST_RESET=1, and this setting must be verified on the actual board before the P4 RESET GPIO is relied upon. The factory USB BOOT button is a separate recovery path: it pulls D+ high during a power-up sequence and must not be confused with UART ISP entry.
+The QT Py RESET button is connected to the CH552 RST input. The RST input is active HIGH and has an internal pull-down. The Adafruit QT Py is treated as delivered with En_RST_RESET=1, so the P4 may use the dedicated RESET GPIO without changing any CH552 configuration bit. Preserve the complete factory configuration unchanged during all firmware updates. The factory USB BOOT button is a separate recovery path: it pulls D+ high during a power-up sequence and must not be confused with UART ISP entry.
 
 ### 2.2 Shared UART/SPI signal lines
 
@@ -107,7 +107,7 @@ Transition: proceed to RESET_RELEASE / APPLICATION_START.
 4. Read the application identity/version over SPI.
 5. If the application does not become responsive, use the BOOT_REQ recovery path only if the application is still capable of handling it; otherwise report a fault and use the separate manual USB BOOT service recovery.
 
-The external RST input works only when En_RST_RESET=1 is programmed in the CH552 configuration word. The datasheet default is 0 (disabled). This configuration must be set and verified on the actual QT Py. A hardware reset returns execution to address 0; it is not treated as a guaranteed UART ISP entry.
+The external RST input is enabled in the assumed Adafruit QT Py factory configuration (En_RST_RESET=1). Do not program or alter this bit. Preserve all factory configuration bytes unchanged. A hardware reset returns execution to address 0; it is not treated as a guaranteed UART ISP entry.
 
 ### State C — UART_ISP_ENTRY
 
@@ -173,7 +173,7 @@ The P4 may cache the last successfully installed image version in non-volatile s
 
 ## 4. Reset and recovery policy
 
-- Normal application restart: P4 asserts the dedicated CH552_RESET line HIGH, then returns it LOW. This requires En_RST_RESET=1.
+- Normal application restart: P4 asserts the dedicated CH552_RESET line HIGH, then returns it LOW. The Adafruit factory configuration is assumed to have En_RST_RESET=1; no configuration-bit change is part of this project.
 - Normal update entry: application-assisted BOOT_REQ interrupt pulse, followed by UART1 ISP. RESET is not substituted for BOOT_REQ.
 - P4 reset/watchdog: CH552 remains powered. P4 shared UART/SPI pins default to high impedance, CS is held HIGH and CH552_RESET is held LOW by the P4 output policy / defined board bias.
 - CH552 does not answer SPI: deassert CS, disable SPI and issue one hardware RESET pulse; then retry the application READY handshake.
@@ -195,7 +195,24 @@ The P4 stores the expected image version and validates the returned identity bef
 
 Keep this application-level SPI protocol independent of Logitech HID report formats. It is only the management and transport link between P4 and CH552.
 
-## 6. Electrical and firmware validation gates
+## 6. Firmware update configuration protection
+
+The Adafruit QT Py is treated as delivered with its factory CH552 configuration, including En_RST_RESET=1. This project does not customize the configuration bytes.
+
+Mandatory update-manager rules:
+
+- Program application code only.
+- Do not issue commands that erase, rewrite or otherwise alter CH552 configuration bytes.
+- Do not generate a programming image that carries replacement configuration bytes.
+- Do not silently apply a programmer's default configuration template.
+- Before selecting an ISP implementation, inspect its source and document the exact flash address range and erase scope.
+- A successful application write is not proof that the factory configuration was preserved. Validate the configuration state independently during bring-up if the programmer's erase/write scope is not unambiguous.
+
+The referenced [LoveMHz/vnproch55x](https://github.com/LoveMHz/vnproch55x) is a CH55x programmer reference, but its published implementation is USB-based: it opens the CH55x bootloader USB device (VID:PID 4348:55E0), checks for bootloader version 2.3.1, issues an erase command and writes a 10 KiB image in 56-byte blocks. It is therefore not the UART1 transport implementation for the P4. Its source does not establish that configuration bytes are preserved by every erase/program operation. Do not use it as evidence for either UART ISP compatibility or configuration-byte preservation.
+
+The P4 UART1 ISP implementation remains a separate task. It must be based on the actual factory ROM bootloader's UART protocol and tested against the QT Py without changing the configuration bytes.
+
+## 7. Electrical and firmware validation gates
 
 The following items are not considered proven until measured on the actual QT Py:
 
@@ -208,7 +225,7 @@ The following items are not considered proven until measured on the actual QT Py
 7. Correct transition from UART1 pin mux to SPI0 pin mux without glitches on P1.6/P1.7.
 8. USB enumeration of the CH552 application after programming and after a normal cold start.
 
-## 7. Source references
+## 8. Source references
 
 - WCH CH552 Datasheet, version 1G:
   - §6.6: ISP download support and programming connection pins.
@@ -220,11 +237,11 @@ The following items are not considered proven until measured on the actual QT Py
   - UART upload uses UART1 on CH55x devices other than CH551.
   - UART bootloader handoff/entry support and bootloader exit sequence.
 
-## 8. Concrete electrical interface and pin-state contract
+## 9. Concrete electrical interface and pin-state contract
 
 This section is the wiring and firmware contract for the ESP32-P4-to-QT-Py connection. P4 GPIO numbers are intentionally not assigned here: they must be selected from the actual P4 board pinout and existing USB/boot/debug allocation before the PCB is frozen.
 
-### 8.1 Net list
+### 9.1 Net list
 
 Use one shared P4 GPIO pair for the two shared CH552 pins. Do **not** wire separate UART and SPI P4 outputs together.
 
@@ -250,7 +267,7 @@ SPI is conventional:
 
 All signals are 3.3 V logic. No level shifter is required for this connection when both devices are actually operated from the same 3.3 V domain. Use a common ground. Optional small series resistors may be placed close to the P4 on driven lines for edge damping, but their values must be selected from measured signal integrity; they are not a substitute for correct pin direction.
 
-### 8.2 Required passive bias and safe defaults
+### 9.2 Required passive bias and safe defaults
 
 - P1.4/SCS: external pull-up to the CH552 3.3 V rail so the slave is deselected before either MCU configures its pins and throughout reset/boot.
 - P3.2/INT0: external bias to the inactive level required by the selected ch55xduino interrupt handler. The coupling capacitor and pulse polarity must match that handler; do not select capacitor, resistor or polarity values by guesswork.
@@ -259,7 +276,7 @@ All signals are 3.3 V logic. No level shifter is required for this connection wh
 - P4 pins: configure as inputs/high impedance before changing peripheral ownership, before CH552 power is removed, and whenever the CH552 is not known to be powered.
 - Do not let P4 and CH552 drive the same shared net simultaneously. The mode transition must disable the old peripheral before enabling the new one.
 
-### 8.3 Pin direction by phase
+### 9.3 Pin direction by phase
 
 | Phase | P4 P1.6 net | P4 P1.7 net | P4 MOSI | P4 CS_N | CH552 role |
 |---|---|---|---|---|---|
@@ -273,14 +290,14 @@ All signals are 3.3 V logic. No level shifter is required for this connection wh
 
 The P4 peripheral matrix may route UART and SPI functions to the same two physical P4 GPIOs. Firmware must change the GPIO matrix and direction explicitly; the table describes electrical pin roles, not simultaneous peripheral operation.
 
-### 8.4 Deterministic transition procedures
+### 9.4 Deterministic transition procedures
 
 **Normal startup / external reset**
 1. Keep P4 shared pins high impedance; keep CS_N pulled high and BOOT_REQ inactive.
 2. Ensure CH552_RESET is LOW before enabling P4 peripheral functions.
 3. If the CH552 is already running, assert CH552_RESET HIGH for at least at least 1 us (datasheet minimum Trst is 70 ns), then drive it LOW. Use a conservative 1 ms pulse and validate on the QT Py.
 4. After release, wait for application startup and SPI READY; read protocol revision and firmware version before enabling gateway traffic.
-5. If En_RST_RESET is not programmed to 1, the external reset line is not an effective reset source. Detect timeout via SPI and use the separately defined BOOT_REQ/application recovery or manual USB BOOT procedure.
+5. The Adafruit factory configuration is expected to enable the external RST input. If the actual QT Py does not respond to RESET, stop and investigate the board/configuration before considering any configuration change. Do not modify the configuration bits as a workaround.
 
 **Cold start**
 1. Keep P4 shared pins high impedance; keep CS_N pulled high, BOOT_REQ inactive and CH552_RESET LOW.
@@ -313,13 +330,13 @@ The P4 peripheral matrix may route UART and SPI functions to the same two physic
 5. Configure P4 SPI while CS_N remains high; only then begin SPI transactions.
 6. Read back the application firmware version and protocol revision. Mark the update successful only when both match the expected image.
 
-### 8.5 Recovery boundary
+### 9.5 Recovery boundary
 
-The BOOT_REQ handoff depends on a functioning CH552 application and its interrupt handler. The separate hardware RESET input provides a controlled application restart only when En_RST_RESET=1; it does not, by itself, guarantee entry into UART ISP. If the application is corrupted, hangs with interrupts disabled, or never reaches the handler, the P4 cannot assume that BOOT_REQ will enter UART ISP. Do not claim a guaranteed software recovery path in that state.
+The BOOT_REQ handoff depends on a functioning CH552 application and its interrupt handler. The separate hardware RESET input provides a controlled application restart under the assumed Adafruit factory configuration (En_RST_RESET=1); it does not, by itself, guarantee entry into UART ISP. If the application is corrupted, hangs with interrupts disabled, or never reaches the handler, the P4 cannot assume that BOOT_REQ will enter UART ISP. Do not claim a guaranteed software recovery path in that state.
 
 The QT Py's manual USB bootloader mechanism (BOOT button / D+ pull-up during power-up) is a separate service recovery path. A fully automatic P4 recovery path requires a separately validated way to control the board's complete power-up condition and USB D+ boot strap; this is not yet part of the approved interface.
 
-### 8.6 Bring-up acceptance tests
+### 9.6 Bring-up acceptance tests
 
 Before enabling automatic updates, verify on the actual QT Py:
 1. Cold-start ROM UART1 detection and upload at VCC=V33=3.3 V.
