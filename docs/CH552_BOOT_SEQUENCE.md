@@ -38,7 +38,7 @@ The CH552 core is operated at 3.3 V:
 
 **Important QT Py board-level constraint:** the Adafruit QT Py USB-C connector also supplies the board's onboard 3.3 V regulator from USB VBUS. Switching only an external 3.3 V feed does not power-cycle the CH552 while USB VBUS remains connected. Before adding a P4-controlled power switch, verify the exact QT Py schematic and isolate every supply path, including USB VBUS and any external 3.3 V feed. Do not connect an external 3.3 V source against the onboard regulator output without confirming the board's power-path arrangement.
 
-For normal firmware updates, use the application-assisted BOOT_REQ handoff; do not power-cycle the module as the routine update mechanism. A controlled cold start is a separate recovery method and is valid only when all supply paths are actually interrupted. Any optional load switch must default OFF during P4 reset and must not allow P4 signal pins to back-power an unpowered CH552.
+For normal firmware updates, use the application-assisted BOOT_REQ handoff; do not power-cycle the module as the routine update mechanism. A controlled cold start is a separate recovery method and is valid only when all supply paths are actually interrupted. If a load switch is retained for exceptional service isolation, it must default to the selected safe state during P4 reset and must not allow P4 signal pins to back-power an unpowered CH552. It is not part of normal reset or update operation.
 
 The QT Py RESET button is connected to the CH552 RST input. The RST input is active HIGH, has an internal pull-down, and is disabled as a manual reset input by the default configuration bit En_RST_RESET=0. The application image/programming configuration must explicitly set En_RST_RESET=1, and this setting must be verified on the actual board before the P4 RESET GPIO is relied upon. The factory USB BOOT button is a separate recovery path: it pulls D+ high during a power-up sequence and must not be confused with UART ISP entry.
 
@@ -263,7 +263,7 @@ All signals are 3.3 V logic. No level shifter is required for this connection wh
 
 | Phase | P4 P1.6 net | P4 P1.7 net | P4 MOSI | P4 CS_N | CH552 role |
 |---|---|---|---|---|---|
-| P4 reset / CH552 unpowered | High impedance | High impedance | High impedance | External pull-up holds high | RESET held inactive LOW |
+| P4 reset / CH552 continuously powered | High impedance | High impedance | High impedance | External pull-up holds high | RESET held inactive LOW; application may continue running |
 | CH552 hardware reset | High impedance | High impedance | High impedance | High | RST driven HIGH, then returned LOW |
 | Cold-start ROM ISP detection | UART TX output, idle high | UART RX input | High impedance | High | ROM UART1: RX on P1.6, TX on P1.7 |
 | Application runtime | SPI MISO input | SPI SCK output | SPI MOSI output | Output, idle high | SPI0 slave |
