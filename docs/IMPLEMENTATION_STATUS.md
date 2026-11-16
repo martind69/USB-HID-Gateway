@@ -24,6 +24,10 @@ Next implementation work:
 
 Date: 2026-11-15
 
+### Upstream device identity constraint (2026-11-16)
+
+The current ESP32-P4 topology has one USB Device controller toward the PC. It can expose one USB device identity with a composite configuration, not two independent upstream device addresses/VID-PID pairs for the downstream G810 and G502. Because the G502 is connected behind the G810's USB hub/pass-through, G HUB compatibility depends on whether one merged composite identity is acceptable. A true two-device identity requires additional upstream USB device-side hardware/controller architecture. See `docs/USB_PROXY_IMPLEMENTATION.md`. This decision must be resolved before final descriptor merging and G HUB control routing.
+
 ## Current work focus
 
 The intermittent initial EP0 enumeration issue is parked at the user's request while external electrical measurements are performed. Do not make further firmware timing, PHY, hub, reset or enumeration-state changes until the user returns with measurement results. Development focus has moved to HID keyboard/mouse report passthrough.
