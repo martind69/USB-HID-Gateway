@@ -9,15 +9,17 @@ A first host-independent Configuration descriptor model has been added:
 - Validates descriptor bounds, declared endpoint counts, unique interface count, endpoint zero/reserved address bits and duplicate endpoint addresses within one interface alternate setting.
 - Exposes lookups for interface/alternate-setting and endpoint mappings.
 - Added host-side tests and CI compilation with `-Wall -Wextra -Werror -pedantic`.
+- Pinned `espressif/esp_tinyusb` to 3.0.1 (bundled TinyUSB 0.21.0~6).
+- Added `tinyusb_control_hook.h` and `scripts/apply_tinyusb_control_hook.ps1`. The patch adds a generic pre-dispatch SETUP callback and a task-context defer API backed by TinyUSB's existing `USBD_EVENT_FUNC_CALL` queue event.
 
-This is the descriptor-model foundation only. It is not yet connected to the Host device lifecycle or TinyUSB descriptor callbacks. The current Espressif HID Host class driver still owns HID interfaces; raw endpoint transport and generic EP0 forwarding are not implemented. No target build or hardware test is claimed for this increment.
+This is the descriptor-model foundation only. It is not yet connected to the Host device lifecycle or TinyUSB descriptor callbacks. The TinyUSB generic SETUP hook is prepared as a version-pinned patch, but it has not yet been applied or compiled in the user's managed component directory. The current Espressif HID Host class driver still owns HID interfaces; raw endpoint transport and generic EP0 forwarding are not implemented. No target build or hardware test is claimed for this increment.
 
 Next implementation work:
 1. Integrate a per-downstream-device descriptor snapshot into the existing Host client without allocating one full model per possible USB address.
 2. Replace `usb_host_hid` interface ownership with a proxy-owned interface/endpoint manager.
 3. Generate and publish the upstream Full-Speed descriptor set before connecting the Device port.
 4. Add raw interrupt IN/OUT forwarding.
-5. Pin and patch the exact TinyUSB version used by `esp_tinyusb ~3.0.0` to expose all upstream SETUP requests to the asynchronous EP0 bridge.
+5. Apply and verify the pinned TinyUSB patch, then implement the asynchronous EP0 transaction manager using the generic SETUP hook and task-context defer API.
 
 
 Date: 2026-11-15
