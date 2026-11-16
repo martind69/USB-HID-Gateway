@@ -83,7 +83,7 @@ Exact collection descriptor bytes are stored in [G815 WinHidDump collections](ca
 
 The sketch does **not** yet expose the G815 identity, the two-interface configuration, the two endpoint descriptors, or the G815 HID report descriptors. The profile constants in the sketch are inventory metadata only; they do not alter the USB descriptors emitted by the current keyboard library.
 
-The supplied descriptor summary establishes descriptor lengths and endpoint properties, but not the complete byte contents of the two HID report descriptors. Do not synthesize or guess those report descriptors. Extract the exact report-descriptor bytes from the capture before implementing the composite device.
+The supplied configuration capture establishes descriptor lengths and endpoint properties. The user has also supplied provisional reconstructed report-descriptor candidates. Use those candidates for the memory-feasibility implementation while clearly marking them provisional; byte-exact raw capture remains a later fidelity refinement and may require corrections.
 
 ## 4. Memory-sizing gate
 
@@ -94,9 +94,9 @@ The implementation must account for:
 - EP0 control endpoint and control-transfer state;
 - interface 0 keyboard HID descriptor and 8-byte interrupt-IN endpoint;
 - interface 1 vendor-defined HID descriptor and 64-byte interrupt-IN endpoint;
-- exact 65-byte and 188-byte HID report descriptors;
+- the current reconstructed 65-byte and 188-byte HID report-descriptor candidates, marked provisional;
 - endpoint buffers and USB stack state;
-- the existing 8-byte SPI request and 17-byte SPI response;
+- the expanded SPI report-path staging buffers (72-byte maximum request, 17-byte response, 8-byte keyboard report and 64-byte vendor report);
 - CRC processing, BOOT_REQ handoff and application state;
 - stack and interrupt-call depth.
 
