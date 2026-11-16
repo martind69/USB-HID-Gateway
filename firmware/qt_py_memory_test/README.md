@@ -74,3 +74,10 @@ The supplied WinHidDump output is documented in [G815 WinHidDump collections](..
 These are collection-level descriptors returned/reconstructed by Windows, not necessarily the raw interface-level report descriptor streams. The USB configuration capture still identifies 65 bytes for interface 0 and 188 bytes for interface 1. The separate 460-byte `HID VHF Driver` descriptor is not the physical Logitech G815 descriptor.
 
 The exact raw 65-byte and 188-byte interface descriptors must still be captured from USB `GET_DESCRIPTOR(Report)` before implementing the final composite USB descriptors. No descriptor code or memory estimate should be based on concatenating the Windows collection descriptors.
+
+
+## Exact raw descriptor capture is the next gate
+
+The raw interface-level Report Descriptor byte streams are still missing. Capture and export exactly 65 bytes for interface 0 and 188 bytes for interface 1 as described in [G815 raw HID report-descriptor capture procedure](../../docs/captures/G815_REPORT_DESCRIPTOR_CAPTURE.md). The Windows collection-level descriptors are supporting evidence only and must not be concatenated or substituted.
+
+Do not replace the temporary keyboard USB stack with a guessed G815 composite profile. Implement the final two-interface profile only after both captured byte arrays pass the documented length and HID-item-boundary checks.
