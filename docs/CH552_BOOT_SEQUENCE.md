@@ -27,17 +27,20 @@ The UART1 alternate mapping to P3.4/P3.2 is not used. The factory ROM bootloader
 
 ## 2. Hardware requirements
 
-### 2.1 Power control
+### 2.1 Power domain and reset
 
-Use a P4-controlled load switch for the CH552 supply.
+The CH552 core is operated at 3.3 V:
 
-- VCC and V33 are connected to the same switched 3.3 V rail.
-- Both pins retain their own local decoupling capacitors.
-- The load-switch enable has a hardware pull-down so the CH552 remains off while the P4 is in reset or its GPIOs are not configured.
-- The load switch must support the CH552 peak current and the selected board's additional loads.
-- The P4 must not drive any CH552-connected signal while CH552 power is off. This prevents unintended back-powering through GPIO protection structures.
+- VCC = 3.3 V.
+- V33 = the same 3.3 V rail, directly tied to VCC as required for the selected low-voltage operating mode.
+- Use local decoupling at the CH552 supply pins.
+- Select the internal 16 MHz clock for 3.3 V operation.
 
-A controlled power cycle is the deterministic way to generate a power-on reset. Do not rely on the CH552 RST pin for the primary bootloader entry mechanism: the external reset input is controlled by the configuration option En_RST_RESET and is disabled by default in the datasheet reset configuration.
+**Important QT Py board-level constraint:** the Adafruit QT Py USB-C connector also supplies the board's onboard 3.3 V regulator from USB VBUS. Switching only an external 3.3 V feed does not power-cycle the CH552 while USB VBUS remains connected. Before adding a P4-controlled power switch, verify the exact QT Py schematic and isolate every supply path, including USB VBUS and any external 3.3 V feed. Do not connect an external 3.3 V source against the onboard regulator output without confirming the board's power-path arrangement.
+
+For normal firmware updates, use the application-assisted BOOT_REQ handoff; do not power-cycle the module as the routine update mechanism. A controlled cold start is a separate recovery method and is valid only when all supply paths are actually interrupted. Any optional load switch must default OFF during P4 reset and must not allow P4 signal pins to back-power an unpowered CH552.
+
+Do not rely on the CH552 RST pad for UART ISP entry unless the selected chip configuration explicitly enables En_RST_RESET and this has been verified on the actual QT Py. The factory USB BOOT button is a separate recovery path: it pulls D+ high during a power-up sequence and must not be confused with UART ISP entry.
 
 ### 2.2 Shared UART/SPI signal lines
 
@@ -218,3 +221,105 @@ The following items are not considered proven until measured on the actual QT Py
 - ch55xduino documentation:
   - UART upload uses UART1 on CH55x devices other than CH551.
   - UART bootloader handoff/entry support and bootloader exit sequence.
+
+## 8. Concrete electrical interface and pin-state contract
+
+This section is the wiring and firmware contract for the ESP32-P4-to-QT-Py connection. P4 GPIO numbers are intentionally not assigned here: they must be selected from the actual P4 board pinout and existing USB/boot/debug allocation before the PCB is frozen.
+
+### 8.1 Net list
+
+Use one shared P4 GPIO pair for the two shared CH552 pins. Do **not** wire separate UART and SPI P4 outputs together.
+
+| Net | ESP32-P4 function in UART mode | ESP32-P4 function in SPI mode | QT Py connection |
+|---|---|---|---|
+| CH552_UART_SPI_1 | UART TX, output | SPI MISO, input | P1.6 / RXD1 / MISO |
+| CH552_UART_SPI_2 | UART RX, input | SPI SCK, output | P1.7 / TXD1 / SCK |
+| CH552_SPI_MOSI | High impedance / unused | SPI MOSI, output | P1.5 / MOSI |
+| CH552_SPI_CS_N | High, output or pulled high | SPI CS, output, active low | P1.4 / SCS |
+| CH552_BOOT_REQ | Idle; pulse output only for handoff | Idle; pulse output only for handoff | P3.2 / INT0 |
+| GND | Common reference | Common reference | GND |
+
+UART is crossed:
+- P4 TX -> CH552 P1.6/RXD1.
+- P4 RX <- CH552 P1.7/TXD1.
+
+SPI is conventional:
+- P4 MOSI -> CH552 P1.5/MOSI.
+- P4 MISO <- CH552 P1.6/MISO.
+- P4 SCK -> CH552 P1.7/SCK.
+- P4 CS_N -> CH552 P1.4/SCS.
+
+All signals are 3.3 V logic. No level shifter is required for this connection when both devices are actually operated from the same 3.3 V domain. Use a common ground. Optional small series resistors may be placed close to the P4 on driven lines for edge damping, but their values must be selected from measured signal integrity; they are not a substitute for correct pin direction.
+
+### 8.2 Required passive bias and safe defaults
+
+- P1.4/SCS: external pull-up to the CH552 3.3 V rail so the slave is deselected before either MCU configures its pins and throughout reset/boot.
+- P3.2/INT0: external bias to the inactive level required by the selected ch55xduino interrupt handler. The coupling capacitor and pulse polarity must match that handler; do not select capacitor, resistor or polarity values by guesswork.
+- Shared P1.6/P1.7 lines: no external pull-up is required for normal SPI operation if the P4 actively drives SCK/MOSI and the CH552 hardware gates MISO. Do not add a strong pull-up to MISO that could mask a failed tri-state condition.
+- P4 pins: configure as inputs/high impedance before changing peripheral ownership, before CH552 power is removed, and whenever the CH552 is not known to be powered.
+- Do not let P4 and CH552 drive the same shared net simultaneously. The mode transition must disable the old peripheral before enabling the new one.
+
+### 8.3 Pin direction by phase
+
+| Phase | P4 P1.6 net | P4 P1.7 net | P4 MOSI | P4 CS_N | CH552 role |
+|---|---|---|---|---|---|
+| P4 reset / CH552 unpowered | High impedance | High impedance | High impedance | External pull-up holds high | Unpowered or reset |
+| Cold-start ROM ISP detection | UART TX output, idle high | UART RX input | High impedance | High | ROM UART1: RX on P1.6, TX on P1.7 |
+| Application runtime | SPI MISO input | SPI SCK output | SPI MOSI output | Output, idle high | SPI0 slave |
+| Runtime-to-ISP handoff | High impedance until handoff completes, then UART TX | High impedance until handoff completes, then UART RX | High impedance | High | Application receives BOOT_REQ, then ROM UART1 |
+| UART programming | UART TX output | UART RX input | High impedance | High | ROM UART1 |
+| ISP exit / return to runtime | High impedance during transition | High impedance during transition | High impedance | High | ROM exits; application restarts |
+
+The P4 peripheral matrix may route UART and SPI functions to the same two physical P4 GPIOs. Firmware must change the GPIO matrix and direction explicitly; the table describes electrical pin roles, not simultaneous peripheral operation.
+
+### 8.4 Deterministic transition procedures
+
+**Cold start**
+1. Keep P4 shared pins high impedance; keep CS_N pulled high and BOOT_REQ inactive.
+2. Start the P4 UART receiver and configure TX to idle high before the CH552 can drive its UART output.
+3. Apply the CH552 supply through the verified QT Py power path. If USB VBUS powers the board, it must not be assumed that a separate 3.3 V switch controls power.
+4. Observe the factory ROM UART ISP startup window using the measured bootloader protocol/timing. If no programming session is requested or detected, allow the ROM bootloader to launch the application.
+5. Wait for the application READY indication over SPI; read its protocol revision and firmware version before enabling normal gateway traffic.
+
+**SPI runtime to UART ISP**
+1. Stop new gateway transactions and wait for the current SPI transaction to finish.
+2. Drive CS_N high and stop the SPI master.
+3. Disable the P4 SPI peripheral and set the shared P1.6/P1.7 P4 pins to high impedance. Keep MOSI high impedance and CS_N high.
+4. Generate the BOOT_REQ edge through the coupling network on P3.2/INT0. The CH552 application must have the tested interrupt handler and bootloader jump code installed.
+5. Wait for the application-to-ROM handoff interval. Do not drive UART data during this interval.
+6. Configure the same P4 shared pins as UART: TX output idle high on P1.6 and RX input on P1.7.
+7. Start the ROM ISP handshake. Continue only after a valid bootloader response.
+
+**UART ISP to SPI runtime**
+1. Complete image transfer and final verification; do not treat a block ACK alone as update success.
+2. Send the bootloader exit sequence supported by the actual bootloader revision.
+3. Disable P4 UART and set both shared pins to high impedance.
+4. Keep CS_N high. Wait for application startup and SPI READY.
+5. Configure P4 SPI while CS_N remains high; only then begin SPI transactions.
+6. Read back the application firmware version and protocol revision. Mark the update successful only when both match the expected image.
+
+### 8.5 Recovery boundary
+
+The BOOT_REQ handoff depends on a functioning CH552 application and its interrupt handler. If the application is corrupted, hangs with interrupts disabled, or never reaches the handler, the P4 cannot assume that BOOT_REQ will enter UART ISP. Do not claim a guaranteed software recovery path in that state.
+
+The QT Py's manual USB bootloader mechanism (BOOT button / D+ pull-up during power-up) is a separate service recovery path. A fully automatic P4 recovery path requires a separately validated way to control the board's complete power-up condition and USB D+ boot strap; this is not yet part of the approved interface.
+
+### 8.6 Bring-up acceptance tests
+
+Before enabling automatic updates, verify on the actual QT Py:
+1. Cold-start ROM UART1 detection and upload at VCC=V33=3.3 V.
+2. P3.2 BOOT_REQ pulse polarity, edge shape, bias level and application-to-ROM handoff.
+3. UART1 operation on P1.6/P1.7 after handoff.
+4. No contention or unintended clock edges on P1.6/P1.7 during either transition.
+5. P1.6/MISO is high impedance whenever CS_N is high.
+6. SPI slave transactions at 1 MHz, including repeated CS assertions and back-to-back transfers.
+7. USB device enumeration after normal startup and after UART ISP programming.
+8. No back-powering when any optional switched supply is off while USB D+/D- and P4 signal wiring remain connected.
+
+## 9. Reference links
+
+- [Adafruit CH552 QT Py pinout and power description](https://learn.adafruit.com/adafruit-ch552-qt-py/pinouts)
+- [Adafruit CH552 QT Py guide: clock and USB bootloader settings](https://learn.adafruit.com/adafruit-ch552-qt-py)
+- [ch55xduino: UART1 serial upload and interrupt-based bootloader handoff](https://github.com/adafruit/ch55xduino)
+- [WCH CH552 datasheet](https://wch-ic.com)
+
