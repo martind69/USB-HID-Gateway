@@ -49,6 +49,7 @@ static __data uint8_t spi_index;
 static __data uint8_t spi_phase;
 
 /* CRC-16/CCITT-FALSE: polynomial 0x1021, init 0xFFFF, no reflection. */
+#pragma NOOVERLAY
 static uint16_t crc16_ccitt(const __xdata uint8_t *data, uint8_t length)
 {
 	uint16_t crc = 0xFFFFU;
@@ -70,6 +71,7 @@ static uint16_t crc16_ccitt(const __xdata uint8_t *data, uint8_t length)
 	return crc;
 }
 
+#pragma NOOVERLAY
 static void build_identity_response(void)
 {
 	uint16_t crc;
@@ -163,7 +165,8 @@ void boot_req_isr(void) __interrupt (0)
 	EA = 0U;
 
 	/* Allow the USB peripheral and interrupt activity to stop cleanly. */
-	delayMicroseconds(100000U);
+	delayMicroseconds(50000U);
+	delayMicroseconds(50000U);
 
 	__asm__ ("lcall #0x3800");
 
