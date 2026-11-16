@@ -11,7 +11,7 @@ extern "C" {
 
 #define CH552_MANAGER_PROTOCOL_VERSION	1U
 #define CH552_MANAGER_REQUEST_SIZE		8U
-#define CH552_MANAGER_RESPONSE_SIZE		16U
+#define CH552_MANAGER_RESPONSE_SIZE		17U
 
 typedef struct {
 	uint8_t major;
