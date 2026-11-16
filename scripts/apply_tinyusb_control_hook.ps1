@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $sourcePath)) {
 
 $content = [System.IO.File]::ReadAllText($sourcePath)
 $marker = "USB_GATEWAY_GENERIC_CONTROL_REQUEST_HOOK"
-if ($content.Contains($marker)) {
+if ($content.Contains($marker) -and $content.Contains("USB_GATEWAY_TINYUSB_DEFER_API")) {
 	Write-Host "Generic TinyUSB control request hook is already applied."
 	exit 0
 }
@@ -80,6 +80,32 @@ $content = $content.Replace($setupAnchor, $setupReplacement)
 
 $encoding = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText($sourcePath, $content, $encoding)
+
+$deferAnchor = @'
+void usbd_defer_func(osal_task_func_t func, void* param, bool in_isr) {
+  dcd_event_t event = {
+      .rhport   = 0,
+      .event_id = USBD_EVENT_FUNC_CALL,
+  };
+  event.func_call.func  = func;
+  event.func_call.param = param;
+
+  queue_event(&event, in_isr);
+}
+'@
+$deferWrapper = @'
+/* USB_GATEWAY_TINYUSB_DEFER_API */
+void tud_defer_func(void (*func)(void *), void *param) {
+  if (func != NULL) {
+    usbd_defer_func(func, param, false);
+  }
+}
+'@
+
+if (-not $content.Contains($deferAnchor)) {
+	throw "Expected TinyUSB task-defer implementation was not found. No file was changed."
+}
+$content = $content.Replace($deferAnchor, $deferAnchor + "`r`n" + $deferWrapper)
 
 Write-Host "Applied generic TinyUSB control request hook."
 Write-Host "Validated TinyUSB version: 0.21.0 (esp_tinyusb 3.0.1)."
