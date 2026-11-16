@@ -88,28 +88,26 @@ The manual QT Py BOOT control that pulls D+ high is a USB-bootloader entry mecha
 
 ## 3. P4-controlled state machine
 
-### State A — SAFE_OFF
+### State A — SAFE_IDLE
 
-Entry conditions: P4 power-up, watchdog recovery, or a requested CH552 power cycle.
+Entry conditions: P4 power-up, P4 watchdog recovery, or normal gateway startup. The QT Py remains continuously powered from the board's 3.3 V supply.
 
 1. Disable P4 SPI and UART peripherals for the shared pins.
-2. Configure all P4 pins connected to CH552 as inputs/high impedance.
-3. Keep SPI CS inactive.
-4. Disable the CH552 load switch.
-5. Wait for the switched rail to discharge below the CH552 POR threshold. The required discharge time must be measured on the assembled board; do not assume that disabling the switch alone guarantees a sufficiently fast power-on reset.
+2. Configure all P4 pins connected to CH552 as inputs/high impedance, except RESET which is driven LOW (inactive).
+3. Keep SPI CS inactive HIGH and BOOT_REQ inactive.
+4. Do not switch the QT Py supply during normal startup or updates.
 
-Transition: after the rail is discharged and P4 has selected the next operating mode.
+Transition: proceed to RESET_RELEASE / APPLICATION_START.
 
-### State B — APPLICATION_START
+### State B — RESET_RELEASE / APPLICATION_START
 
-1. Keep the P4 shared SPI pins high impedance.
-2. Enable the CH552 3.3 V load switch.
-3. Allow power-on reset and the factory bootloader's normal startup/timeout behavior to complete.
-4. Wait for the CH552 application to initialize its clock, USB device stack, SPI slave and internal buffers.
-5. Read the application identity/version over SPI.
-6. If the application does not become responsive, enter the recovery path; do not assume that simply switching UART on will force the running application into ISP mode.
+1. Keep P4 shared SPI pins high impedance; keep CS high and BOOT_REQ inactive.
+2. Ensure CH552_RESET is LOW. If a deliberate restart is required, assert RST HIGH for at least 1 us (datasheet minimum Trst = 70 ns), then return it LOW. Use a conservative firmware pulse such as 1 ms; validate on the QT Py.
+3. Wait for the CH552 application to initialize its clock, USB device stack, SPI slave and internal buffers.
+4. Read the application identity/version over SPI.
+5. If the application does not become responsive, use the BOOT_REQ recovery path only if the application is still capable of handling it; otherwise report a fault and use the separate manual USB BOOT service recovery.
 
-The CH552 documentation states that the ISP bootloader runs first after power-on reset. The ch55xduino serial-upload documentation separately describes an application-assisted bootloader entry using an interrupt pin and a DTR/RTS pulse. The exact startup window and behavior of the QT Py factory bootloader must be verified on the actual module.
+The external RST input works only when En_RST_RESET=1 is programmed in the CH552 configuration word. The datasheet default is 0 (disabled). This configuration must be set and verified on the actual QT Py. A hardware reset returns execution to address 0; it is not treated as a guaranteed UART ISP entry.
 
 ### State C — UART_ISP_ENTRY
 
@@ -175,12 +173,12 @@ The P4 may cache the last successfully installed image version in non-volatile s
 
 ## 4. Reset and recovery policy
 
-- Normal update entry: application-assisted BOOT_REQ interrupt pulse, followed by UART1 ISP.
-- Recovery reset: controlled CH552 power cycle using the load switch.
-- CH552 RST pin: optional only after confirming En_RST_RESET configuration on the actual module. Do not assume it works on an unmodified QT Py.
-- P4 reset/watchdog: shared P4 pins return to high impedance; load-switch pull-down keeps CH552 off until P4 firmware deliberately starts it.
-- CH552 does not answer SPI: deassert CS, disable SPI, power-cycle once, then retry startup.
-- CH552 does not answer UART ISP: keep SPI disabled and enter a fault state. A power cycle is a recovery attempt, not a guaranteed substitute for the application-assisted UART bootloader handoff. USB bootloader recovery through the board's D+ BOOT mechanism remains a separate service path.
+- Normal application restart: P4 asserts the dedicated CH552_RESET line HIGH, then returns it LOW. This requires En_RST_RESET=1.
+- Normal update entry: application-assisted BOOT_REQ interrupt pulse, followed by UART1 ISP. RESET is not substituted for BOOT_REQ.
+- P4 reset/watchdog: CH552 remains powered. P4 shared UART/SPI pins default to high impedance, CS is held HIGH and CH552_RESET is held LOW by the P4 output policy / defined board bias.
+- CH552 does not answer SPI: deassert CS, disable SPI and issue one hardware RESET pulse; then retry the application READY handshake.
+- CH552 does not answer UART ISP: keep SPI disabled and enter a fault state. RESET may restart the application but does not guarantee UART ISP entry. USB bootloader recovery through the board's D+ BOOT mechanism remains a separate service path.
+- Cold power removal: reserved for exceptional bench/service recovery only. It requires interrupting every QT Py supply path, including USB VBUS; it is not the routine reset or update method.
 - Failed programming: retain the previous P4-side known-good image and retry only through an explicit recovery policy. The P4 must not mark the target firmware as updated until runtime verification succeeds.
 
 ## 5. Firmware version and update protocol
@@ -280,7 +278,7 @@ The P4 peripheral matrix may route UART and SPI functions to the same two physic
 **Normal startup / external reset**
 1. Keep P4 shared pins high impedance; keep CS_N pulled high and BOOT_REQ inactive.
 2. Ensure CH552_RESET is LOW before enabling P4 peripheral functions.
-3. If the CH552 is already running, assert CH552_RESET HIGH for at least the minimum pulse width specified by the verified CH552 datasheet revision, then drive it LOW. The exact pulse width is to be confirmed in bench validation; do not infer it from the button feel.
+3. If the CH552 is already running, assert CH552_RESET HIGH for at least at least 1 us (datasheet minimum Trst is 70 ns), then drive it LOW. Use a conservative 1 ms pulse and validate on the QT Py.
 4. After release, wait for application startup and SPI READY; read protocol revision and firmware version before enabling gateway traffic.
 5. If En_RST_RESET is not programmed to 1, the external reset line is not an effective reset source. Detect timeout via SPI and use the separately defined BOOT_REQ/application recovery or manual USB BOOT procedure.
 
