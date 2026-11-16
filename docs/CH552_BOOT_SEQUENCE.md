@@ -197,31 +197,49 @@ Keep this application-level SPI protocol independent of Logitech HID report form
 
 ## 6. Firmware update configuration protection
 
-The complete 16-bit Configuration Information Word is located at flash addresses `0x3FFE`/`0x3FFF`. It is loaded at power-on into the CH552 configuration state. The Adafruit QT Py factory configuration is the reference state for this project. In particular, `En_RST_RESET=1` is expected on the Adafruit module, although WCH raw-chip defaults differ.
+The CH552 datasheet (version 1G, Table 6.2 and Section 6.7) distinguishes the writable Configuration Information Word from the factory chip ID:
 
-The following bit assignments and factory-state interpretation are the project reference:
+- The writable 16-bit configuration word is at `0x3FF8`/`0x3FF9`.
+- The three following 16-bit words at `0x3FFA`–`0x3FFF` contain the factory chip ID; `0x3FFE`/`0x3FFF` are the final 16-bit chip-ID word and are not the writable configuration word.
+- The complete Configuration Information area spans `0x3FF8`–`0x3FFF`.
 
-| Bit(s) | Field | Meaning / factory state |
+The documented fields of the writable word at `0x3FF8`/`0x3FF9` are:
+
+| Bit(s) | Datasheet field | Meaning / datasheet recommendation |
 |---|---|---|
-| 15 | `bCODE_PROTECT` | Code-flash read protection; `1` = unprotected (standard) |
-| 14 | `bBOOT_LOAD` | Integrated USB bootloader after power-on; `1` = enabled (standard) |
-| 13 | `bDEBUG_EN` | Serial debug interface; `1` = enabled (standard) |
-| 12 | `En_RST_RESET` | External RESET input; WCH raw-chip default `0` = disabled; Adafruit QT Py factory state `1` = enabled |
-| 11–10 | `bLDO_VSEL` | Internal LDO output selection; factory state corresponds to 3.3 V |
-| 9 | `bDATA_FLASH_P` | DataFlash write protection; `1` = unprotected (standard) |
-| 8 | `bOSC_EN_XT` | Oscillator selection; `0` = internal oscillator (standard), `1` = external crystal |
-| 7–0 | Not specified here | Preserve unchanged; do not infer values or meanings from this summary |
+| 15 | `Code_Protect` | `0` = programmer read disabled; `1` = read enabled |
+| 14 | `No_Boot_Load` | `0` = start application at `0x0000`; `1` = start BootLoader at `0x3800` |
+| 13 | `En_Long_Reset` | `0` = standard short reset; `1` = add 44 ms reset delay |
+| 12 | `En_RST_RESET` | `0` = external RST disabled; `1` = external RST enabled |
+| 11–10 | Reserved | Datasheet says programmer sets `00b` |
+| 9 | `Must_1` | Must be `1` |
+| 8 | `Must_0` | Must be `0` |
+| 7–0 | `All_1` | Must be `0xFF` |
 
-**Project invariant: preserve the entire 16-bit Configuration Information Word exactly as found on the Adafruit QT Py.** No bit is to be set, cleared, normalized or otherwise changed by the application build, firmware packaging, UART updater or recovery procedure. The table documents expected factory semantics; it is not permission to construct or write a replacement word.
+The Adafruit QT Py is treated as delivered with `En_RST_RESET=1`, as established for this project from the module-specific reference/board information. This is distinct from the WCH raw-chip recommendation of `0`. Do not generalize the Adafruit value to unconfigured WCH raw chips.
+
+**Project invariant: preserve the complete 16-bit word at `0x3FF8`/`0x3FF9) exactly as found on the Adafruit QT Py.** Also preserve the factory chip-ID words at `0x3FFA`–`0x3FFF`; they are identity data, not writable configuration fields. No bit is to be set, cleared, normalized or otherwise changed by the application build, firmware packaging, UART updater or recovery procedure.
 
 Mandatory update-manager rules:
 
 - Program application code only.
-- Do not issue commands that erase, rewrite or otherwise alter configuration bytes.
+- Do not issue commands that erase, rewrite or otherwise alter the configuration word or chip-ID area.
 - Do not generate a programming image that carries replacement configuration bytes.
 - Do not silently apply a programmer's default configuration template.
 - Before selecting an ISP implementation, inspect its source and document the exact flash address range and erase scope.
-- A successful application write is not proof that the factory configuration was preserved. Validate the configuration state independently during bring-up if the programmer's erase/write scope is not unambiguous.
+- A successful application write is not proof that configuration and chip-ID areas were preserved. Validate preservation independently during bring-up if the programmer's erase/write scope is not unambiguous.
+
+### UART ISP tool investigation
+
+The ch55xduino project documents both USB and UART upload for CH552-class devices and explicitly identifies UART1 as the serial ISP interface (CH551 excluded). It also documents that automatic entry into the ROM bootloader requires an application-side interrupt handoff, e.g. using a serial-adapter control line. The documented bootloader-exit sequence is sent at 57600 baud; this is not, by itself, evidence of the complete programming baud/protocol. See [ch55xduino README, USB and Serial upload](https://github.com/DeqingSun/ch55xduino).
+
+The UNIT-Electronics package exposes a separate `vnproch55x_serial` upload recipe:
+`vnproch55x -s {serial.port} -t {build.mcu} {hex-file}`.
+This establishes the wrapper's command-line contract, not the binary's implementation.
+
+The public [LoveMHz/vnproch55x `main.cpp`](https://github.com/LoveMHz/vnproch55x/blob/master/main.cpp) inspected here is USB-only: it uses libusb bulk endpoints and opens VID:PID `4348:55E0`. It loads a fixed 10 KiB image, sends an erase command (`A4 01 00 08)), then writes blocks starting at address zero. The source does not decode the erase command's physical scope and does not implement the serial `-s` path. It therefore cannot be used to certify the separate serial executable or configuration preservation.
+
+**Result:** UART1 ISP is a documented CH55x capability and is the intended transport, but the exact `vnproch55x_serial` binary implementation, protocol details, erase range and preservation of `0x3FF8`–`0x3FFF` remain unverified. No programmer is approved for automatic P4 updates yet.
 
 ## 7. Electrical and firmware validation gates
 
