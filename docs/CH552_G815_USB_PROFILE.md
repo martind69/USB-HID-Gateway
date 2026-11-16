@@ -52,6 +52,31 @@ The 59-byte configuration descriptor was captured in `DESCRIPTORs.pcapng`. The b
 
 Decoded HID report-descriptor lengths are `0x0041 = 65` bytes for interface 0 and `0x00BC = 188` bytes for interface 1. The capture contains the configuration descriptor and these length references; it does not contain the full report-descriptor byte arrays returned by the separate HID `GET_DESCRIPTOR(Report)` requests. Those arrays are still required before the application can implement the exact HID report formats.
 
+## 2.1 Windows HID collection descriptor evidence
+
+The user supplied a WinHidDump report for the physical G815. It exposes the following Windows HID collections:
+
+| USB interface | Windows collection | WinHidDump descriptor length | Notable report ID / role |
+|---|---|---:|---|
+| 0 | `mi_00\...\kbd` | 50 B | Keyboard collection |
+| 1 | `mi_01&col01` | 28 B | Report ID 0x01 |
+| 1 | `mi_01&col02` | 74 B | Report ID 0x02; pointer-like collection |
+| 1 | `mi_01&col03` | 56 B | Report ID 0x03; Consumer Control |
+| 1 | `mi_01&col04` | 32 B | Vendor usage page 0xFF43, Report ID 0x11 |
+| 1 | `mi_01&col05` | 33 B | Vendor usage page 0xFF43, Report ID 0x12 |
+
+The WinHidDump output also contains a 460-byte descriptor under a Windows `HID VHF Driver` path. That is a separate virtual HID node, not the physical G815 USB interface descriptor; it must not be used as the G815's USB report descriptor.
+
+These are Windows collection-level descriptors returned/reconstructed for individual HID collection handles. They are useful for mapping usages and Report IDs, but they are not necessarily byte-for-byte copies of the complete interface-level descriptors reported by the USB configuration descriptor (65 bytes for interface 0 and 188 bytes for interface 1). Do not concatenate the collection descriptors or substitute their lengths for the interface-level lengths.
+
+The vendor collections declare:
+- Report ID `0x11`: `0x98` bits = 19 data bytes; with Report ID, 20 bytes.
+- Report ID `0x12`: `0x1F8` bits = 63 data bytes; with Report ID, 64 bytes.
+
+This aligns with the observed 20-byte and 64-byte vendor report sizes, but actual endpoint routing must be cross-checked against USB transfers.
+
+Exact collection descriptor bytes are stored in [G815 WinHidDump collections](captures/G815_WINHIDDUMP_COLLECTIONS.md). The raw 65-byte and 188-byte interface-level Report Descriptor streams still need to be extracted from USB `GET_DESCRIPTOR(Report)` responses before implementing the exact USB interface descriptors.
+
 ## 3. What the current QT Py sketch does and does not implement
 
 `firmware/qt_py_memory_test/qt_py_memory_test.ino` remains a resource-baseline sketch. It currently includes the ch55xduino standard keyboard USB stack as a temporary stand-in, plus the P4↔CH552 SPI identity protocol and BOOT_REQ handoff.
