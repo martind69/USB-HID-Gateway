@@ -315,10 +315,14 @@ Configuration reference update (2026-11-16): `docs/CH552_BOOT_SEQUENCE.md` now r
 
 ### CH552 UART ISP source review (2026-11-16)
 
-The ch55xduino documentation confirms UART1 ISP support for CH552 (CH551 excluded) and an application-assisted interrupt handoff into the ROM bootloader. The UNIT-Electronics platform recipe passes `-s {serial.port}` to `vnproch55x`, but the executable's source/behavior was not available for inspection in this review.
+The ch55xduino documentation confirms UART1 ISP support for CH552 (CH551 excluded) and an application-assisted interrupt handoff into the ROM bootloader. The DeqingSun `vnproch551/main.cpp` source implements UART1 at 57600 baud with TX prefix `57 AB` and RX prefix `55 AA`.
 
-The inspected LoveMHz `vnproch55x` `main.cpp` is USB-only (libusb, VID:PID 4348:55E0), uses a fixed 10 KiB image, issues erase command `A4 01 00 08`, then writes from address zero. Its erase scope is not decoded in the source; it does not prove preservation of configuration or chip-ID addresses. Do not treat this source as the serial uploader implementation.
+Critical hazard: this source sends an A8 boot-options write to the CH552 configuration-information area when `-c` is omitted. The default CH552 option byte is `0x03` (source comment: P3.6/D+ boot selection, P1.5 cleared). The special `-c KEEP` argument skips that write, but the UNIT-Electronics serial recipe does not pass `-c KEEP`. Thus the stock serial recipe is not safe for this project.
+
+The source's erase command is `A4 01 00 08`; its exact physical erase coverage remains unverified, so `-c KEEP` alone does not establish safe preservation of configuration or chip-ID memory.
 
 Important datasheet correction: writable Configuration Information is at 0x3FF8/0x3FF9. Addresses 0x3FFA–0x3FFF hold factory chip-ID words; 0x3FFE/0x3FFF are the final ID word. The configuration fields in Table 6.2 are Code_Protect, No_Boot_Load, En_Long_Reset, En_RST_RESET, reserved bits 11:10, Must_1 bit 9, Must_0 bit 8, and All_1 bits 7:0. The prior documentation incorrectly described 0x3FFE/0x3FFF as the configuration word and used several incorrect field names; this has been corrected in CH552_BOOT_SEQUENCE.md.
 
-Status: UART1 capability confirmed by ch55xduino documentation; exact serial uploader implementation, UART protocol, erase scope and preservation of configuration/ID areas remain unverified. Automatic P4 flashing remains prohibited until those points are established.
+Status: UART1 capability, 57600-baud framing and the A8 configuration-write hazard are source-confirmed. The stock UNIT-Electronics serial recipe omits -c KEEP and is not approved. The erase command's physical coverage and preservation of 0x3FF8–0x3FFF remain unverified. Automatic P4 flashing remains prohibited.
+
+The serial programmer source review uses [DeqingSun/vnproch551](https://github.com/DeqingSun/vnproch551), while the installed package recipe is defined separately in [UNIT-Electronics platform.txt](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt). Do not assume the binary shipped in a particular package release is byte-for-byte identical to the reviewed source without checking its version/build provenance.
