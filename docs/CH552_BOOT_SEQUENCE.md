@@ -476,3 +476,21 @@ A first standalone CH55xduino sketch has been added at `firmware/qt_py_memory_te
 Build settings: CH552 Board, internal 16 MHz / 3.3 V, P3.6 D+ bootloader pin, USB RAM profile `user148`. The ch55xduino README documents 148 bytes reserved for USB endpoint RAM and 876 bytes remaining xRAM under this profile. The CH552 provides 16 KiB program ROM, 256 bytes internal iRAM and 1 KiB xRAM. These are capacity figures, not a measured build result.
 
 The keyboard profile is only a temporary standard-HID stand-in. It does not implement G815/G502 descriptors or vendor control/report traffic, so its memory report is a lower-bound infrastructure measurement, not proof that the final Logitech emulator fits. No compiler is available in the current execution environment; the sketch has not been compiled, flashed or tested. Capture the ch55xduino compiler summary and generated map/mem files before drawing a capacity conclusion. No flash/configuration update is implemented.
+
+
+## 6. CH552 USB runtime target: Logitech G815
+
+The CH552 QT Py is assigned to emulate the Logitech G815 (`046D:C33F`). The ESP32-P4 USB Device remains assigned to the G502 HERO (`046D:C08B`), keeping the G502's approximately 1 kHz regular mouse-report path off the CH552/SPI hop.
+
+The supplied `DESCRIPTORs.pcapng` summary identifies the G815 as a 59-byte configuration descriptor with two HID interfaces:
+
+| Interface | Role | HID report descriptor length | IN endpoint | Maximum packet | bInterval |
+|---|---|---:|---|---:|---:|
+| 0 | Boot keyboard | 65 bytes | 0x81 | 8 bytes | 1 |
+| 1 | Vendor-defined HID | 188 bytes | 0x82 | 64 bytes | 1 |
+
+Both endpoints must be supported concurrently. At Full Speed, `bInterval=1` requests a 1 ms polling interval. The 64-byte vendor endpoint must be included in endpoint-memory sizing. Exact HID report-descriptor bytes must be extracted from the capture; do not synthesize them from their lengths.
+
+The existing `firmware/qt_py_memory_test/qt_py_memory_test.ino` still uses a temporary single-interface ch55xduino keyboard stack. Its G815 profile constants are inventory only and do not yet implement the two-interface configuration. The meaningful memory-capacity measurement is the compile report after the exact G815 composite descriptor and both endpoints are implemented.
+
+See [CH552 G815 USB profile](CH552_G815_USB_PROFILE.md) for the descriptor-derived requirements and acceptance criteria.
