@@ -40,7 +40,7 @@ The CH552 core is operated at 3.3 V:
 
 For normal firmware updates, use the application-assisted BOOT_REQ handoff; do not power-cycle the module as the routine update mechanism. A controlled cold start is a separate recovery method and is valid only when all supply paths are actually interrupted. Any optional load switch must default OFF during P4 reset and must not allow P4 signal pins to back-power an unpowered CH552.
 
-Do not rely on the CH552 RST pad for UART ISP entry unless the selected chip configuration explicitly enables En_RST_RESET and this has been verified on the actual QT Py. The factory USB BOOT button is a separate recovery path: it pulls D+ high during a power-up sequence and must not be confused with UART ISP entry.
+The QT Py RESET button is connected to the CH552 RST input. The RST input is active HIGH, has an internal pull-down, and is disabled as a manual reset input by the default configuration bit En_RST_RESET=0. The application image/programming configuration must explicitly set En_RST_RESET=1, and this setting must be verified on the actual board before the P4 RESET GPIO is relied upon. The factory USB BOOT button is a separate recovery path: it pulls D+ high during a power-up sequence and must not be confused with UART ISP entry.
 
 ### 2.2 Shared UART/SPI signal lines
 
@@ -237,6 +237,7 @@ Use one shared P4 GPIO pair for the two shared CH552 pins. Do **not** wire separ
 | CH552_SPI_MOSI | High impedance / unused | SPI MOSI, output | P1.5 / MOSI |
 | CH552_SPI_CS_N | High, output or pulled high | SPI CS, output, active low | P1.4 / SCS |
 | CH552_BOOT_REQ | Idle; pulse output only for handoff | Idle; pulse output only for handoff | P3.2 / INT0 |
+| CH552_RESET | GPIO low = normal run; high pulse = reset | Same | QT Py RESET pad / CH552 RST |
 | GND | Common reference | Common reference | GND |
 
 UART is crossed:
@@ -255,6 +256,7 @@ All signals are 3.3 V logic. No level shifter is required for this connection wh
 
 - P1.4/SCS: external pull-up to the CH552 3.3 V rail so the slave is deselected before either MCU configures its pins and throughout reset/boot.
 - P3.2/INT0: external bias to the inactive level required by the selected ch55xduino interrupt handler. The coupling capacitor and pulse polarity must match that handler; do not select capacitor, resistor or polarity values by guesswork.
+- CH552 RST: keep LOW in normal operation. The pin has an internal pull-down; add/retain a defined external pull-down if required by the P4 reset-domain behavior. The P4 GPIO asserts reset by driving HIGH and releases it by driving LOW. Do not leave the P4 GPIO push-pull HIGH at startup.
 - Shared P1.6/P1.7 lines: no external pull-up is required for normal SPI operation if the P4 actively drives SCK/MOSI and the CH552 hardware gates MISO. Do not add a strong pull-up to MISO that could mask a failed tri-state condition.
 - P4 pins: configure as inputs/high impedance before changing peripheral ownership, before CH552 power is removed, and whenever the CH552 is not known to be powered.
 - Do not let P4 and CH552 drive the same shared net simultaneously. The mode transition must disable the old peripheral before enabling the new one.
@@ -263,7 +265,8 @@ All signals are 3.3 V logic. No level shifter is required for this connection wh
 
 | Phase | P4 P1.6 net | P4 P1.7 net | P4 MOSI | P4 CS_N | CH552 role |
 |---|---|---|---|---|---|
-| P4 reset / CH552 unpowered | High impedance | High impedance | High impedance | External pull-up holds high | Unpowered or reset |
+| P4 reset / CH552 unpowered | High impedance | High impedance | High impedance | External pull-up holds high | RESET held inactive LOW |
+| CH552 hardware reset | High impedance | High impedance | High impedance | High | RST driven HIGH, then returned LOW |
 | Cold-start ROM ISP detection | UART TX output, idle high | UART RX input | High impedance | High | ROM UART1: RX on P1.6, TX on P1.7 |
 | Application runtime | SPI MISO input | SPI SCK output | SPI MOSI output | Output, idle high | SPI0 slave |
 | Runtime-to-ISP handoff | High impedance until handoff completes, then UART TX | High impedance until handoff completes, then UART RX | High impedance | High | Application receives BOOT_REQ, then ROM UART1 |
@@ -274,12 +277,26 @@ The P4 peripheral matrix may route UART and SPI functions to the same two physic
 
 ### 8.4 Deterministic transition procedures
 
-**Cold start**
+**Normal startup / external reset**
 1. Keep P4 shared pins high impedance; keep CS_N pulled high and BOOT_REQ inactive.
+2. Ensure CH552_RESET is LOW before enabling P4 peripheral functions.
+3. If the CH552 is already running, assert CH552_RESET HIGH for at least the minimum pulse width specified by the verified CH552 datasheet revision, then drive it LOW. The exact pulse width is to be confirmed in bench validation; do not infer it from the button feel.
+4. After release, wait for application startup and SPI READY; read protocol revision and firmware version before enabling gateway traffic.
+5. If En_RST_RESET is not programmed to 1, the external reset line is not an effective reset source. Detect timeout via SPI and use the separately defined BOOT_REQ/application recovery or manual USB BOOT procedure.
+
+**Cold start**
+1. Keep P4 shared pins high impedance; keep CS_N pulled high, BOOT_REQ inactive and CH552_RESET LOW.
 2. Start the P4 UART receiver and configure TX to idle high before the CH552 can drive its UART output.
-3. Apply the CH552 supply through the verified QT Py power path. If USB VBUS powers the board, it must not be assumed that a separate 3.3 V switch controls power.
+3. The QT Py remains continuously powered from its verified 3.3 V supply. A true cold start occurs only when all supply paths, including USB VBUS, are interrupted; it is not part of routine update flow.
 4. Observe the factory ROM UART ISP startup window using the measured bootloader protocol/timing. If no programming session is requested or detected, allow the ROM bootloader to launch the application.
 5. Wait for the application READY indication over SPI; read its protocol revision and firmware version before enabling normal gateway traffic.
+
+**Application recovery / restart**
+1. Stop new gateway transactions and wait for the current SPI transaction to finish.
+2. Drive CS_N high and stop the SPI master.
+3. Disable the P4 SPI peripheral and set shared P1.6/P1.7 and MOSI to high impedance.
+4. Assert CH552_RESET HIGH for the verified reset pulse width, then drive it LOW.
+5. Wait for application READY and verify the firmware version. This restarts the CH552; it is not the UART ISP entry command.
 
 **SPI runtime to UART ISP**
 1. Stop new gateway transactions and wait for the current SPI transaction to finish.
@@ -300,7 +317,7 @@ The P4 peripheral matrix may route UART and SPI functions to the same two physic
 
 ### 8.5 Recovery boundary
 
-The BOOT_REQ handoff depends on a functioning CH552 application and its interrupt handler. If the application is corrupted, hangs with interrupts disabled, or never reaches the handler, the P4 cannot assume that BOOT_REQ will enter UART ISP. Do not claim a guaranteed software recovery path in that state.
+The BOOT_REQ handoff depends on a functioning CH552 application and its interrupt handler. The separate hardware RESET input provides a controlled application restart only when En_RST_RESET=1; it does not, by itself, guarantee entry into UART ISP. If the application is corrupted, hangs with interrupts disabled, or never reaches the handler, the P4 cannot assume that BOOT_REQ will enter UART ISP. Do not claim a guaranteed software recovery path in that state.
 
 The QT Py's manual USB bootloader mechanism (BOOT button / D+ pull-up during power-up) is a separate service recovery path. A fully automatic P4 recovery path requires a separately validated way to control the board's complete power-up condition and USB D+ boot strap; this is not yet part of the approved interface.
 
