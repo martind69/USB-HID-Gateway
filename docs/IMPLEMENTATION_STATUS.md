@@ -24,9 +24,13 @@ Next implementation work:
 
 Date: 2026-11-15
 
-### Upstream device identity constraint (2026-11-16)
+### Confirmed upstream device identity requirement (2026-11-16)
 
-The current ESP32-P4 topology has one USB Device controller toward the PC. It can expose one USB device identity with a composite configuration, not two independent upstream device addresses/VID-PID pairs for the downstream G810 and G502. Because the G502 is connected behind the G810's USB hub/pass-through, G HUB compatibility depends on whether one merged composite identity is acceptable. A true two-device identity requires additional upstream USB device-side hardware/controller architecture. See `docs/USB_PROXY_IMPLEMENTATION.md`. This decision must be resolved before final descriptor merging and G HUB control routing.
+The user confirmed that the PC must enumerate the G810 and G502 as two separate USB devices with their original VID/PID values and independent USB device addresses. A single composite proxy device is rejected.
+
+The current P4 allocation uses one OTG controller as Host and one as Device. The preferred hardware direction for feasibility work is to retain these roles, add a second independently programmable USB Device MCU/controller, and connect both upstream Device controllers to a new PC-facing USB hub. The P4 remains the sole owner of the downstream Logitech Host bus; the second Device MCU receives control transactions and raw endpoint payloads over an inter-processor link. This architecture is not yet implemented or hardware-validated.
+
+The PC-facing hub would expose two separate child devices but may change the original parent/port topology. Since the G502 is physically behind the G810's internal hub/pass-through, the internal hub identity and hierarchy must be inspected before claiming full G HUB compatibility. Do not continue with a merged composite descriptor. See `docs/USB_UPSTREAM_MULTI_DEVICE_ARCHITECTURE.md` and `docs/USB_PROXY_IMPLEMENTATION.md`.
 
 ## Current work focus
 
