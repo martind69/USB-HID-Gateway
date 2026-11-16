@@ -467,3 +467,12 @@ The update backend must not be enabled until all of these are proven:
 The manager source is registered with the ESP-IDF component, but it is not yet called from `usb_gateway_init()`. This is intentional: the P4 GPIO allocation, SPI host instance and CH552 board wiring have not yet been finalized. No UART/SPI pin routing, USB controller allocation, Host/Device PHY configuration or existing gateway behavior was changed.
 
 No ESP-IDF build, unit test, flash operation or hardware test is claimed for this change.
+
+
+## QT Py CH552 application memory baseline (2026-11-16)
+
+A first standalone CH55xduino sketch has been added at `firmware/qt_py_memory_test/qt_py_memory_test.ino`. It includes the temporary standard HID keyboard USB stack, the agreed P4↔CH552 SPI identity protocol (8-byte request / 17-byte response, CRC-16/CCITT-FALSE), and the P3.2/INT0 BOOT_REQ handoff. The sketch is intended to measure baseline code ROM, xRAM and internal RAM/stack use before adding Logitech vendor-specific behavior.
+
+Build settings: CH552 Board, internal 16 MHz / 3.3 V, P3.6 D+ bootloader pin, USB RAM profile `user148`. The ch55xduino README documents 148 bytes reserved for USB endpoint RAM and 876 bytes remaining xRAM under this profile. The CH552 provides 16 KiB program ROM, 256 bytes internal iRAM and 1 KiB xRAM. These are capacity figures, not a measured build result.
+
+The keyboard profile is only a temporary standard-HID stand-in. It does not implement G815/G502 descriptors or vendor control/report traffic, so its memory report is a lower-bound infrastructure measurement, not proof that the final Logitech emulator fits. No compiler is available in the current execution environment; the sketch has not been compiled, flashed or tested. Capture the ch55xduino compiler summary and generated map/mem files before drawing a capacity conclusion. No flash/configuration update is implemented.
