@@ -310,7 +310,7 @@ The update manager must write application code only and must not erase or rewrit
 The P4 UART1 updater still requires protocol/source review. Its flash and erase scope must be demonstrated not to modify factory configuration before it is used on the QT Py.
 
 
-Configuration reference update (2026-11-16): `docs/CH552_BOOT_SEQUENCE.md` now records the complete documented bit assignments for the upper byte of the Configuration Information Word and explicitly reserves bits 7–0 as unspecified in this project summary. The entire word, not just En_RST_RESET, must be preserved unchanged. No programmer has yet been approved as safe for this requirement.
+Configuration reference update (2026-11-16): `docs/CH552_BOOT_SEQUENCE.md` now records the complete WCH Table 6.2 bit assignments for the writable word at 0x3FF8/0x3FF9. The factory chip-ID words at 0x3FFA–0x3FFF are separately identified and must also be preserved unchanged. No programmer has yet been approved as safe for this requirement.
 
 
 ### CH552 UART ISP source review (2026-11-16)
