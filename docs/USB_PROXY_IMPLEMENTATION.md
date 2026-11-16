@@ -37,18 +37,22 @@ Do not run the Espressif HID class driver and the proxy's own interface manager 
 
 The existing Host diagnostic path should be folded into this owner or changed so it does not create a second competing lifecycle.
 
-## Critical topology constraint — multiple downstream USB devices
+## Confirmed upstream identity requirement — two independent devices
 
-The current ESP32-P4 design has one Host role for the downstream topology and one Device role toward the PC. The Device controller enumerates as one USB device with one Device descriptor and one VID/PID. It can expose multiple interfaces in a composite configuration, but it cannot independently present the downstream G810 and G502 as two USB device addresses with their original VID/PID identities.
+The user has confirmed that the PC must continue to enumerate the Logitech G810 and G502 as two separate USB devices, each with its own original VID/PID and independent USB device address. A single composite proxy device is rejected.
 
-This matters because the physical test topology places the G502 behind the G810's USB hub/pass-through. A single merged composite descriptor could expose both devices' interfaces, but it would not preserve two independent device identities. Interface-recipient requests may be routable by interface mapping; device-recipient vendor requests and software matching based on VID/PID cannot automatically be preserved.
+The current ESP32-P4 allocation uses one OTG controller in Host mode for the downstream Logitech topology and one OTG controller in Device mode toward the PC. The P4 silicon has one High-Speed and one Full-Speed OTG controller, but the USB Serial/JTAG block is not a third general-purpose TinyUSB Device controller. Espressif documents one HS and one FS Device peripheral; simultaneous independent TinyUSB Device instances on the P4 are not established by the current project stack. Do not infer that two independent upstream Device instances are available from the silicon controller count alone.
 
-Therefore, before implementing the final descriptor generator, endpoint map and G HUB control routing, choose the intended upstream representation:
+The selected direction for feasibility work is to preserve the current P4 Host + Device roles and investigate adding:
+- A second independently programmable USB Device MCU/controller for the second Logitech identity.
+- A PC-facing USB hub with separate downstream ports for the two upstream Device controllers.
+- A framed inter-processor link (SPI is the initial candidate) so the P4 remains the sole owner of the physical downstream Host bus and forwards control transactions and raw endpoint payloads to the correct upstream Device controller.
 
-- One composite proxy device combining interfaces from all downstream HID devices (single upstream VID/PID; G HUB compatibility must be experimentally established).
-- Two independently enumerated upstream USB devices (requires additional USB device-side hardware/controller architecture; the current single Device port alone cannot provide this).
+The PC will see a hub introduced by the gateway and two separate child devices. This meets the confirmed VID/PID/device-address requirement, but it does not automatically reproduce the original hub parent/port topology. Because the G502 is physically connected through the G810's internal hub/pass-through, G HUB compatibility may additionally depend on the hub identity and hierarchy. The G810 internal hub descriptors and G502 parent/port path must be audited before claiming full compatibility.
 
-The initial descriptor parser is intentionally device-configuration scoped. It does not yet merge multiple downstream device configurations.
+Do not implement a merged composite descriptor or interface-only vendor-request routing. The detailed hardware candidate, controller allocation, inter-MCU protocol and topology caveats are tracked in `docs/USB_UPSTREAM_MULTI_DEVICE_ARCHITECTURE.md`.
+
+The initial descriptor parser remains device-configuration scoped. It does not merge G810 and G502 configurations, and its eventual integration must maintain separate per-device models and independent EP0 state.
 
 ## Stage 1 — Descriptor-driven upstream enumeration
 
