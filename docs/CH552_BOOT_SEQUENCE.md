@@ -231,15 +231,19 @@ Mandatory update-manager rules:
 
 ### UART ISP tool investigation
 
-The ch55xduino project documents both USB and UART upload for CH552-class devices and explicitly identifies UART1 as the serial ISP interface (CH551 excluded). It also documents that automatic entry into the ROM bootloader requires an application-side interrupt handoff, e.g. using a serial-adapter control line. The documented bootloader-exit sequence is sent at 57600 baud; this is not, by itself, evidence of the complete programming baud/protocol. See [ch55xduino README, USB and Serial upload](https://github.com/DeqingSun/ch55xduino).
+The ch55xduino project documents both USB and UART upload for CH552-class devices and explicitly identifies UART1 as the serial ISP interface (CH551 excluded). It also documents that automatic entry into the ROM bootloader requires an application-side interrupt handoff. The documented bootloader-exit sequence is sent at 57600 baud. See [ch55xduino README, USB and Serial upload](https://github.com/DeqingSun/ch55xduino).
 
 The UNIT-Electronics package exposes a separate `vnproch55x_serial` upload recipe:
 `vnproch55x -s {serial.port} -t {build.mcu} {hex-file}`.
-This establishes the wrapper's command-line contract, not the binary's implementation.
+This establishes the wrapper's command-line contract, not by itself the binary's implementation.
 
-The public [LoveMHz/vnproch55x `main.cpp`](https://github.com/LoveMHz/vnproch55x/blob/master/main.cpp) inspected here is USB-only: it uses libusb bulk endpoints and opens VID:PID `4348:55E0`. It loads a fixed 10 KiB image, sends an erase command (`A4 01 00 08)), then writes blocks starting at address zero. The source does not decode the erase command's physical scope and does not implement the serial `-s` path. It therefore cannot be used to certify the separate serial executable or configuration preservation.
+The [DeqingSun/vnproch551 `main.cpp`](https://github.com/DeqingSun/vnproch551/blob/master/main.cpp) source contains both USB and UART1 transport paths. The serial path opens the port at 57600 baud, sends frames prefixed with `57 AB`, and validates replies prefixed with `55 AA`. The application-side BOOT_REQ handoff remains necessary; the host utility's DTR/RTS toggling is specific to its serial-adapter reset-capacitor arrangement and is not automatically applicable to the P4 design.
 
-**Result:** UART1 ISP is a documented CH55x capability and is the intended transport, but the exact `vnproch55x_serial` binary implementation, protocol details, erase range and preservation of `0x3FF8`–`0x3FFF` remain unverified. No programmer is approved for automatic P4 updates yet.
+**Critical configuration finding:** the source defines an `A8` boot-options write command targeting the configuration-information area. If the `-c` option is omitted, the program sends this command with its default CH552 boot-pin value (`0x03`, documented in the source as selecting P3.6/D+ and clearing P1.5). The special argument `-c KEEP` skips that configuration write. However, the UNIT-Electronics `vnproch55x_serial` recipe passes `-s` and `-t` but does **not** pass `-c KEEP`. Therefore the package's default serial upload invocation is **not compatible with this project's immutable-configuration requirement**.
+
+The source also sends erase command `A4 01 00 08` for CH552 and comments that the erase operation is sector-based, but the exact physical erase coverage of this ROM command is not established by the source. `-c KEEP` only skips the explicit A8 boot-options write; it is not proof that the erase command preserves the configuration word or factory chip-ID area. The older [LoveMHz/vnproch55x `main.cpp`](https://github.com/LoveMHz/vnproch55x/blob/master/main.cpp) is USB-only and likewise sends the erase command.
+
+**Result:** UART1 ISP and its 57600-baud framing are source-confirmed. The stock UNIT-Electronics serial recipe must not be used unchanged. Even with `-c KEEP`, erase-scope preservation of `0x3FF8`–`0x3FFF` remains unverified. No programmer is approved for automatic P4 updates yet.
 
 ## 7. Electrical and firmware validation gates
 
