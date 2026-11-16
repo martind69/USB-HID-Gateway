@@ -50,6 +50,8 @@ typedef struct {
 	uint8_t attributes;
 	uint8_t max_power;
 	uint8_t interface_count;
+	uint8_t unique_interface_count;
+	uint8_t declared_interface_count;
 	uint8_t endpoint_count;
 	uint8_t hid_descriptor_count;
 	uint16_t total_length;
