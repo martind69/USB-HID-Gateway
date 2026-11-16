@@ -348,7 +348,7 @@ Before enabling automatic updates, verify on the actual QT Py:
 7. USB device enumeration after normal startup and after UART ISP programming.
 8. No back-powering when any optional switched supply is off while USB D+/D- and P4 signal wiring remain connected.
 
-## 9. Reference links
+## 10. Reference links
 
 - [Adafruit CH552 QT Py pinout and power description](https://learn.adafruit.com/adafruit-ch552-qt-py/pinouts)
 - [Adafruit CH552 QT Py guide: clock and USB bootloader settings](https://learn.adafruit.com/adafruit-ch552-qt-py)
