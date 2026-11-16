@@ -111,6 +111,7 @@ usb_proxy_descriptor_result_t usb_proxy_configuration_parse(
 	}
 
 	configuration->total_length = (uint16_t)descriptor_length;
+	configuration->declared_interface_count = descriptor[4];
 	configuration->configuration_value = descriptor[5];
 	configuration->attributes = descriptor[7];
 	configuration->max_power = descriptor[8];
@@ -236,12 +237,25 @@ usb_proxy_descriptor_result_t usb_proxy_configuration_parse(
 
 	{
 		size_t i;
+		uint16_t interface_number_mask = 0U;
 		for (i = 0U; i < configuration->interface_count; ++i) {
 			const usb_proxy_interface_t *interface = &configuration->interfaces[i];
 			if (interface->endpoint_count != interface->declared_endpoint_count) {
 				return USB_PROXY_DESC_ERR_ENDPOINT;
 			}
+			if (interface->interface_number >= 16U) {
+				return USB_PROXY_DESC_ERR_INTERFACE;
+			}
+			interface_number_mask |= (uint16_t)(1U << interface->interface_number);
 		}
+		for (i = 0U; i < 16U; ++i) {
+			if ((interface_number_mask & (uint16_t)(1U << i)) != 0U) {
+				configuration->unique_interface_count++;
+			}
+		}
+	}
+	if (configuration->unique_interface_count != configuration->declared_interface_count) {
+		return USB_PROXY_DESC_ERR_INTERFACE;
 	}
 
 	return USB_PROXY_DESC_OK;
