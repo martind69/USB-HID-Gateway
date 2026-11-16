@@ -25,8 +25,7 @@ typedef struct {
 
 /*
  * SPI transport contract:
- * - One callback invocation transfers exactly tx_size bytes and receives
- *   exactly rx_size bytes under one CS assertion.
+ * - One callback invocation transfers exactly length bytes in both directions under one CS assertion.
  * - The CH552 slave consumes the request during transaction N.
  * - Its response is returned during transaction N+1.
  * - The callback must not change GPIO ownership or perform UART operations.
