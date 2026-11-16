@@ -2,7 +2,7 @@
 
 ## Binding requirement
 
-The PC must enumerate the Logitech G810 and Logitech G502 as two separate USB devices. Each must retain its own downstream Device Descriptor identity (VID/PID), configuration, interfaces, endpoints and device-recipient control-request context. A single composite USB device is not acceptable.
+The PC must enumerate the Logitech G815 and Logitech G502 as two separate USB devices. Each must retain its own downstream Device Descriptor identity (VID/PID), configuration, interfaces, endpoints and device-recipient control-request context. A single composite USB device is not acceptable.
 
 This is a confirmed project requirement, not an open architecture choice.
 
@@ -39,7 +39,7 @@ Preferred direction for investigation:
                                 |
                     [Existing downstream hub path]
                                 |
-                       Logitech G810 + G502
+                       Logitech G815 + G502
 ~~~
 
 The diagram is logical: the P4 remains the main gateway and owns the downstream Host stack. Its existing Device controller proxies one Logitech device. A second MCU or dedicated Device controller proxies the other. Both Device-side controllers connect to separate downstream ports of a new PC-facing USB hub. The hub's upstream port connects to the PC.
@@ -69,7 +69,7 @@ For an upstream control request received by either Device-side controller:
 2. Identify the associated downstream device slot.
 3. Submit the corresponding asynchronous Host control transfer on the P4.
 4. Return the downstream result to the originating upstream Device controller.
-5. Keep EP0 transaction state independent for G810 and G502.
+5. Keep EP0 transaction state independent for G815 and G502.
 
 For interrupt endpoints, the P4 Host owns downstream transfers and forwards raw payloads to the correct upstream Device controller. The P4 can continue to observe copied HID reports for mapping without modifying the forwarded bytes.
 
@@ -77,19 +77,21 @@ For interrupt endpoints, the P4 Host owns downstream transfers and forwards raw 
 
 Separate VID/PID identities are necessary but may not be sufficient for complete G HUB compatibility.
 
-The physical test setup has the G502 connected through the G810's internal USB hub/pass-through. With a simple PC-facing two-port hub, the PC would see the G810 and G502 as sibling devices under the gateway's hub. That is not necessarily the same hub parent/port topology as the original physical connection.
+The current USB topology analysis identifies the G815 and G502 as sibling devices behind the Genesys Logic hub (VID/PID 05E3:0610) integrated into the ASUS monitor. The G502 connection through the G815 pass-through is a cable-only path; it is not an additional USB hub. Do not model the G502 as a child of a G815-internal hub.
+
+A PC-facing gateway hub with the two proxy Device controllers on separate downstream ports would also expose the G815 and G502 as sibling devices. It would, however, add a new hub node and change the exact upstream parent/port path compared with the current monitor-hub topology.
 
 Before claiming full G HUB compatibility, capture and compare:
-- The G810 Device Descriptor and its interface/configuration tree.
-- The G810 internal hub's Device and Hub descriptors, VID/PID and port count.
+- The G815 Device Descriptor and its interface/configuration tree.
+- The monitor's Genesys Logic hub identity and the observed port relationship for both devices.
 - The G502 Device Descriptor and its original parent/port relationship.
 - G HUB's vendor control transfers, recipient type, wIndex, interface/endpoint usage and device selection behavior.
 
-If G HUB depends on the original hub hierarchy or hub identity, the PC-facing topology may need a nested hub arrangement that reproduces the G810 hub as a hub node, rather than merely exposing two sibling devices. This is a separate requirement from preserving the two VID/PID identities.
+The available topology evidence does not justify emulating a G815-internal hub. The remaining question is whether G HUB depends on the monitor hub's identity or physical port path, or only on the two independent Logitech device identities and their control/report behavior.
 
 ## Controller allocation and endpoint audit
 
-Do not select the secondary MCU or assign G810/G502 to the P4 versus the secondary controller until the captured descriptors have been inventoried.
+Do not select the secondary MCU or assign G815/G502 to the P4 versus the secondary controller until the captured descriptors have been inventoried.
 
 Required audit per device:
 - USB speed and bMaxPacketSize0.
@@ -110,7 +112,7 @@ The P4's currently used PC-facing Device controller is Full-Speed. The upstream 
 - Two separate device addresses and original VID/PID values.
 - Retains the current P4 Host + Device allocation.
 - Requires inter-MCU transport and additional PCB area/power.
-- Hub topology may differ from the original G810 internal hub arrangement.
+- Hub topology may differ from the original G815 internal hub arrangement.
 
 This is the preferred candidate for feasibility work.
 
@@ -127,7 +129,7 @@ Rejected. It cannot satisfy the confirmed requirement for two separate USB devic
 Do not continue implementing the single-composite upstream descriptor merger or interface-only vendor request routing.
 
 Next engineering steps:
-1. Extract and inventory the actual G810, G810 hub and G502 descriptors from the existing USBPcap captures.
+1. Extract and inventory the actual G815, G815 hub and G502 descriptors from the existing USBPcap captures.
 2. Determine whether G HUB requires the original hub hierarchy, not just separate VID/PID identities.
 3. Audit the P4's current USB Device endpoint budget against each device descriptor.
 4. Evaluate candidate secondary USB Device MCUs/stacks and a PC-facing hub controller.
