@@ -4,7 +4,7 @@ ESP32-P4-based USB HID gateway with a PC-facing USB Device connection and a peri
 
 ## Project objective
 
-Provide a descriptor-driven HID gateway for the observed Logitech G810 DE keyboard (`046D:C33F`) and Logitech G502 HERO mouse (`046D:C08B`). The gateway supports two modes:
+Provide a descriptor-driven HID gateway for the observed Logitech G815 DE keyboard (`046D:C33F`) and Logitech G502 HERO mouse (`046D:C08B`). The gateway supports two modes:
 
 - **Passthrough** (default): forward supported input reports to the PC without semantic modification.
 - **Proxy**: apply JSON-configured input mappings. Inputs without an active mapping continue to the PC normally.
@@ -54,6 +54,7 @@ Runtime diagnostics provide a five-second serial summary, a bounded USB-device r
 - [Input mapping and report-routing interface](docs/INPUT_MAPPING_ROUTING.md)
 - [PC-facing USB HID proof of concept](docs/USB_DEVICE_POC_TEST.md)
 - [USB Host enumeration test](docs/USB_HOST_ENUMERATION_TEST.md)
+- [CH552 boot, UART ISP and SPI runtime sequence](docs/CH552_BOOT_SEQUENCE.md)
 
 ### USB/HID evidence and design
 - [USB topology](docs/USB_TOPOLOGY.md)
