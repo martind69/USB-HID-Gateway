@@ -35,6 +35,23 @@ For a Full-Speed interrupt endpoint, `bInterval=1` requests a 1 ms polling inter
 
 The vendor endpoint's 64-byte maximum packet size is the important CH552 endpoint-buffer and USB-stack design constraint. Both IN endpoints must be represented concurrently, with EP0 retained for control transfers. The CH552 endpoint-memory layout and ch55xduino USB implementation must be checked before selecting a concrete buffer allocation.
 
+
+## 2.1 Raw G815 configuration descriptor
+
+The 59-byte configuration descriptor was captured in `DESCRIPTORs.pcapng`. The bytes below are copied from the descriptor response, not reconstructed from the table:
+
+```text
+09 02 3B 00 02 01 04 A0 FA
+09 04 00 00 01 03 01 01 00
+09 21 11 01 00 01 22 41 00
+07 05 81 03 08 00 01
+09 04 01 00 01 03 00 00 00
+09 21 11 01 00 01 22 BC 00
+07 05 82 03 40 00 01
+```
+
+Decoded HID report-descriptor lengths are `0x0041 = 65` bytes for interface 0 and `0x00BC = 188` bytes for interface 1. The capture contains the configuration descriptor and these length references; it does not contain the full report-descriptor byte arrays returned by the separate HID `GET_DESCRIPTOR(Report)` requests. Those arrays are still required before the application can implement the exact HID report formats.
+
 ## 3. What the current QT Py sketch does and does not implement
 
 `firmware/qt_py_memory_test/qt_py_memory_test.ino` remains a resource-baseline sketch. It currently includes the ch55xduino standard keyboard USB stack as a temporary stand-in, plus the P4↔CH552 SPI identity protocol and BOOT_REQ handoff.
