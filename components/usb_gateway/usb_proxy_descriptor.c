@@ -237,19 +237,14 @@ usb_proxy_descriptor_result_t usb_proxy_configuration_parse(
 
 	{
 		size_t i;
-		uint16_t interface_number_mask = 0U;
+		bool interface_seen[256] = { false };
 		for (i = 0U; i < configuration->interface_count; ++i) {
 			const usb_proxy_interface_t *interface = &configuration->interfaces[i];
 			if (interface->endpoint_count != interface->declared_endpoint_count) {
 				return USB_PROXY_DESC_ERR_ENDPOINT;
 			}
-			if (interface->interface_number >= 16U) {
-				return USB_PROXY_DESC_ERR_INTERFACE;
-			}
-			interface_number_mask |= (uint16_t)(1U << interface->interface_number);
-		}
-		for (i = 0U; i < 16U; ++i) {
-			if ((interface_number_mask & (uint16_t)(1U << i)) != 0U) {
+			if (!interface_seen[interface->interface_number]) {
+				interface_seen[interface->interface_number] = true;
 				configuration->unique_interface_count++;
 			}
 		}
