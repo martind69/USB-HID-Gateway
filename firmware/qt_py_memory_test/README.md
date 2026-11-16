@@ -6,7 +6,7 @@ This sketch is the first resource baseline for the Adafruit QT Py CH552. The sel
 
 - Temporary ch55xduino standard HID keyboard USB stack;
 - SPI0 slave request/response protocol used by the ESP32-P4 manager;
-- 8-byte request and 17-byte identity response;
+- 72-byte maximum SPI request buffer (6-byte header, 64-byte payload, 2-byte CRC), 17-byte identity response, 8-byte keyboard report staging buffer and 64-byte vendor report staging buffer;
 - CRC-16/CCITT-FALSE;
 - application-assisted P3.2/INT0 BOOT_REQ handoff;
 - compile-time inventory constants for the intended G815 USB profile.
@@ -45,12 +45,12 @@ Record the compiler summary:
 - local variable / stack margin reported by the toolchain;
 - generated `.map` and `.mem` files.
 
-The ch55xduino `user148` profile documents 148 bytes reserved for USB endpoint memory and 876 bytes remaining xRAM under that profile. The CH552 has 256 bytes internal iRAM and 1 KiB xRAM. The sketch also allocates 25 bytes for the explicit SPI request/response buffers. These are architectural figures, not measured results.
+The ch55xduino `user148` profile documents 148 bytes reserved for USB endpoint memory and 876 bytes remaining xRAM under that profile. The CH552 has 256 bytes internal iRAM and 1 KiB xRAM. The expanded memory probe allocates 161 bytes of xRAM for the maximum SPI request, identity response and two report staging buffers (72 + 17 + 8 + 64 bytes), plus three bytes of `__data` state for the SPI indices/phases and probe sink. The previous identity-only baseline used 25 bytes for the request/response pair. These are source-level allocation totals; the compiler map is authoritative.
 
 ## Memory-sizing stages
 
-1. Compile the current temporary keyboard + SPI + BOOT_REQ baseline and record ROM, xRAM, iRAM and stack figures.
-2. Implement the exact G815 two-interface composite profile, including EP0, 8-byte endpoint 0x81, 64-byte endpoint 0x82 and the exact 65-byte / 188-byte HID report descriptors.
+1. Compile the current temporary keyboard + SPI + BOOT_REQ baseline with the expanded G815 report-path memory probe. Record ROM, xRAM, iRAM and stack figures; compare against the previous 25-byte request/response baseline if that build report is available.
+2. Replace the temporary keyboard-only USB stack with a two-interface composite implementation using EP0, 8-byte interrupt-IN endpoint 0x81 and 64-byte interrupt-IN endpoint 0x82. Keep the currently reconstructed report descriptors marked provisional until corrected or confirmed.
 3. Compile again and compare the resource reports. The second report is the meaningful CH552 capacity gate.
 4. Add Logitech vendor control and interrupt-report handling only after the descriptor-level composite profile fits with a defensible stack margin.
 
