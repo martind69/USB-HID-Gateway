@@ -89,6 +89,17 @@ Before claiming full G HUB compatibility, capture and compare:
 
 The available topology evidence does not justify emulating a G815-internal hub. The remaining question is whether G HUB depends on the monitor hub's identity or physical port path, or only on the two independent Logitech device identities and their control/report behavior.
 
+## Available descriptor summary
+
+The prior capture analysis contains the following summarized endpoint information, but the original USBPcap files and complete raw descriptor dumps are not available in the repository:
+
+| Device | VID:PID | Speed | Interface summary | Reported Interrupt IN endpoints |
+|---|---|---|---|---|
+| Logitech G815 DE | 046D:C33F | Full-Speed | 2 HID interfaces | IF0: 0x81, 8 bytes; IF1: 0x82, 64 bytes |
+| Logitech G502 HERO | 046D:C08B | Full-Speed | 2 HID interfaces | IF0: 0x81, 8 bytes; IF1: 0x82, 20 bytes |
+
+Both reported endpoint intervals are 1 ms. This summary is useful for preliminary sizing only. It does not prove that the configurations contain no additional endpoints, alternate settings or class/vendor-specific descriptor requirements. The complete Device, Configuration, Interface, HID and Endpoint descriptor byte streams are still required before controller allocation can be finalized.
+
 ## Controller allocation and endpoint audit
 
 Do not select the secondary MCU or assign G815/G502 to the P4 versus the secondary controller until the captured descriptors have been inventoried.
