@@ -307,7 +307,7 @@ The Adafruit QT Py is treated as delivered with En_RST_RESET=1. The dedicated P4
 
 The update manager must write application code only and must not erase or rewrite configuration bytes. The [LoveMHz/vnproch55x](https://github.com/LoveMHz/vnproch55x) source is USB-only and sends an erase command followed by application writes; it does not prove configuration-byte preservation. The [UNIT-Electronics CH55x package platform.txt](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt) maps USB uploads to `vnproch55x ... -c {upload.bootcfg}` and serial uploads to `vnproch55x -s {serial.port} -t {build.mcu} ...` without the `-c` argument. The separately reviewed [DeqingSun/vnproch551 source](https://github.com/DeqingSun/vnproch551) shows that omitting `-c` causes the default CH552 A8 boot-options write; `-c KEEP` skips that write. Therefore the stock serial recipe is not approved. The erase command's physical scope remains unverified.
 
-The P4 UART1 updater still requires protocol/source review. Its flash and erase scope must be demonstrated not to modify factory configuration before it is used on the QT Py.
+The P4 UART1 updater still requires a dedicated implementation and validation. Its flash and erase scope must be demonstrated not to modify factory configuration or chip-ID data before it is used on the QT Py.
 
 
 Configuration reference update (2026-11-16): `docs/CH552_BOOT_SEQUENCE.md` now records the complete WCH Table 6.2 bit assignments for the writable word at 0x3FF8/0x3FF9. The factory chip-ID words at 0x3FFA–0x3FFF are separately identified and must also be preserved unchanged. No programmer has yet been approved as safe for this requirement.
@@ -317,9 +317,9 @@ Configuration reference update (2026-11-16): `docs/CH552_BOOT_SEQUENCE.md` now r
 
 The ch55xduino documentation confirms UART1 ISP support for CH552 (CH551 excluded) and an application-assisted interrupt handoff into the ROM bootloader. The DeqingSun `vnproch551/main.cpp` source implements UART1 at 57600 baud with TX prefix `57 AB` and RX prefix `55 AA`.
 
-Critical hazard: this source sends an A8 boot-options write to the CH552 configuration-information area when `-c` is omitted. The default CH552 option byte is `0x03` (source comment: P3.6/D+ boot selection, P1.5 cleared). The special `-c KEEP` argument skips that write, but the UNIT-Electronics serial recipe does not pass `-c KEEP`. Thus the stock serial recipe is not safe for this project.
+Critical hazard: this source sends an A8 boot-options write when `-c` is omitted. Its source comment describes an 8-byte write relative to `ROM_CFG_ADDR-8` and the default CH552 option byte `0x03` (P3.6/D+ boot selection, P1.5 cleared). The special `-c KEEP` argument skips that write, but the UNIT-Electronics serial recipe does not pass `-c KEEP`. Thus the stock serial recipe is not safe for this project. The A8 source comment's address mapping must be reconciled with the WCH datasheet's configuration/ID map before any use.
 
-The source's erase command is `A4 01 00 08`; its exact physical erase coverage remains unverified, so `-c KEEP` alone does not establish safe preservation of configuration or chip-ID memory.
+The source's erase command is `A4 01 00 08`; reverse-engineered discussion for a later V2.5 loader describes eight pages being deleted for V2.4 and later, but the page size and erase coverage for the QT Py's actual ROM version remain unverified. `-c KEEP` alone does not establish safe preservation of configuration or chip-ID memory.
 
 Important datasheet correction: writable Configuration Information is at 0x3FF8/0x3FF9. Addresses 0x3FFA–0x3FFF hold factory chip-ID words; 0x3FFE/0x3FFF are the final ID word. The configuration fields in Table 6.2 are Code_Protect, No_Boot_Load, En_Long_Reset, En_RST_RESET, reserved bits 11:10, Must_1 bit 9, Must_0 bit 8, and All_1 bits 7:0. The prior documentation incorrectly described 0x3FFE/0x3FFF as the configuration word and used several incorrect field names; this has been corrected in CH552_BOOT_SEQUENCE.md.
 
