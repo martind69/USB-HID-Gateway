@@ -1,6 +1,7 @@
 idf_component_register(
 	SRCS
-		"usb_gateway.c"\n\t\t"ch552_manager.c"
+		"usb_gateway.c"
+		"ch552_manager.c"
 		"usb_proxy_descriptor.c"
 		"usb_host.c"
 		"usb_host_hid.c"
