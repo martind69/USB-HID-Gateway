@@ -4,7 +4,7 @@
 
 Replace the current semantic-only forwarding path with a descriptor- and transfer-oriented USB proxy. The transport path must preserve raw USB payloads; HID parsing and application mapping remain optional passive observers.
 
-The first implementation target is the existing ESP32-P4 board and the Logitech G810/G502 test topology. This is not yet a claim of arbitrary USB-class compatibility.
+The first implementation target is the existing ESP32-P4 board and the Logitech G815/G502 test topology. This is not yet a claim of arbitrary USB-class compatibility.
 
 ## Current source audit
 
@@ -39,7 +39,7 @@ The existing Host diagnostic path should be folded into this owner or changed so
 
 ## Confirmed upstream identity requirement — two independent devices
 
-The user has confirmed that the PC must continue to enumerate the Logitech G810 and G502 as two separate USB devices, each with its own original VID/PID and independent USB device address. A single composite proxy device is rejected.
+The user has confirmed that the PC must continue to enumerate the Logitech G815 and G502 as two separate USB devices, each with its own original VID/PID and independent USB device address. A single composite proxy device is rejected.
 
 The current ESP32-P4 allocation uses one OTG controller in Host mode for the downstream Logitech topology and one OTG controller in Device mode toward the PC. The P4 silicon has one High-Speed and one Full-Speed OTG controller, but the USB Serial/JTAG block is not a third general-purpose TinyUSB Device controller. Espressif documents one HS and one FS Device peripheral; simultaneous independent TinyUSB Device instances on the P4 are not established by the current project stack. Do not infer that two independent upstream Device instances are available from the silicon controller count alone.
 
@@ -48,11 +48,11 @@ The selected direction for feasibility work is to preserve the current P4 Host +
 - A PC-facing USB hub with separate downstream ports for the two upstream Device controllers.
 - A framed inter-processor link (SPI is the initial candidate) so the P4 remains the sole owner of the physical downstream Host bus and forwards control transactions and raw endpoint payloads to the correct upstream Device controller.
 
-The PC will see a hub introduced by the gateway and two separate child devices. This meets the confirmed VID/PID/device-address requirement, but it does not automatically reproduce the original hub parent/port topology. Because the G502 is physically connected through the G810's internal hub/pass-through, G HUB compatibility may additionally depend on the hub identity and hierarchy. The G810 internal hub descriptors and G502 parent/port path must be audited before claiming full compatibility.
+The PC will see a hub introduced by the gateway and two separate child devices. This meets the confirmed VID/PID/device-address requirement. Existing topology analysis identifies the G815 and G502 as sibling devices behind the ASUS monitor's Genesys Logic hub (05E3:0610). The G815 pass-through is a cable-only path, not an internal USB hub. The gateway's added hub changes the exact parent/port path, so G HUB compatibility still requires validation against the observed monitor-hub topology. Do not model the G502 as a child of a G815-internal hub.
 
 Do not implement a merged composite descriptor or interface-only vendor-request routing. The detailed hardware candidate, controller allocation, inter-MCU protocol and topology caveats are tracked in `docs/USB_UPSTREAM_MULTI_DEVICE_ARCHITECTURE.md`.
 
-The initial descriptor parser remains device-configuration scoped. It does not merge G810 and G502 configurations, and its eventual integration must maintain separate per-device models and independent EP0 state.
+The initial descriptor parser remains device-configuration scoped. It does not merge G815 and G502 configurations, and its eventual integration must maintain separate per-device models and independent EP0 state.
 
 ## Stage 1 — Descriptor-driven upstream enumeration
 
@@ -130,7 +130,7 @@ Do not change PHY routing, `fsls_only`, hub configuration, reset timing or the p
 
 ### Gate 1 — Descriptor mirror
 
-- Attach the G810 downstream.
+- Attach the G815 downstream.
 - Verify the proxy remains disconnected until descriptor capture is complete.
 - Capture PC-side enumeration with USBPcap.
 - Compare Device, Configuration, Interface, HID and Endpoint descriptors against the downstream capture.
