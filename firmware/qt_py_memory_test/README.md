@@ -76,8 +76,8 @@ These are collection-level descriptors returned/reconstructed by Windows, not ne
 The exact raw 65-byte and 188-byte interface descriptors must still be captured from USB `GET_DESCRIPTOR(Report)` before implementing the final composite USB descriptors. No descriptor code or memory estimate should be based on concatenating the Windows collection descriptors.
 
 
-## Exact raw descriptor capture is the next gate
+## Raw descriptor capture: later fidelity refinement
 
-The raw interface-level Report Descriptor byte streams are still missing. Capture and export exactly 65 bytes for interface 0 and 188 bytes for interface 1 as described in [G815 raw HID report-descriptor capture procedure](../../docs/captures/G815_REPORT_DESCRIPTOR_CAPTURE.md). The Windows collection-level descriptors are supporting evidence only and must not be concatenated or substituted.
+The user has reconstructed provisional interface-level Report Descriptor candidates from the evidence currently available. These candidates are suitable for continued architecture and memory-feasibility work when clearly labelled provisional. The exact 65-byte and 188-byte raw USB streams remain a later refinement for byte-exact enumeration and G HUB compatibility. Keep them distinct from the Windows collection descriptors and replace the candidates if raw capture evidence differs.
 
-Do not replace the temporary keyboard USB stack with a guessed G815 composite profile. Implement the final two-interface profile only after both captured byte arrays pass the documented length and HID-item-boundary checks.
+The capture procedure is documented in [G815 raw HID report-descriptor capture procedure](../../docs/captures/G815_REPORT_DESCRIPTOR_CAPTURE.md).
