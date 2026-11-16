@@ -6,7 +6,10 @@
  * Board options: CH552, internal 16 MHz, 3.3 V, P3.6 boot pin,
  *                USB RAM setting "user148"
  *
- * This is a resource baseline, not the final Logitech device firmware.
+ * This is a resource baseline, not the final Logitech G815 device firmware.
+ * The target is the G815 composite HID device (keyboard + vendor HID).
+ * The current USBHIDKeyboard stack remains a temporary single-interface stand-in.
+ * See docs/CH552_G815_USB_PROFILE.md for descriptor-derived target requirements.
  */
 
 #ifndef USER_USB_RAM
@@ -38,6 +41,23 @@
 #define FW_VERSION_MINOR	1U
 #define FW_VERSION_PATCH	0U
 #define FW_BUILD_ID			0x20261116UL
+
+/*
+ * Descriptor-derived target inventory for the CH552's assigned G815 role.
+ * These values document the required profile; the temporary USBHIDKeyboard
+ * library below does not emit this composite Logitech configuration yet.
+ */
+#define G815_INTERFACE_COUNT			2U
+#define G815_KEYBOARD_INTERFACE			0U
+#define G815_VENDOR_INTERFACE			1U
+#define G815_KEYBOARD_EP_IN				0x81U
+#define G815_VENDOR_EP_IN				0x82U
+#define G815_KEYBOARD_EP_MPS			8U
+#define G815_VENDOR_EP_MPS			64U
+#define G815_INTERRUPT_INTERVAL		1U
+#define G815_KEYBOARD_REPORT_DESC_LEN	65U
+#define G815_VENDOR_REPORT_DESC_LEN	188U
+
 
 /*
  * USB endpoint memory is allocated by the ch55xduino user148 profile.
