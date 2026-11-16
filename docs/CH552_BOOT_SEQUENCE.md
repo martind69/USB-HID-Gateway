@@ -389,3 +389,81 @@ Before enabling automatic updates, verify on the actual QT Py:
 - [UNIT-Electronics CH55x package: separate `vnproch55x_serial` upload-tool mapping](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt)
 - [WCH CH552 datasheet](https://wch-ic.com)
 
+
+
+## 11. P4 management software framework (2026-11-16)
+
+A first transport-independent P4 management module has been added:
+
+- `components/usb_gateway/include/ch552_manager.h`
+- `components/usb_gateway/ch552_manager.c`
+
+The module is registered in the `usb_gateway` ESP-IDF component. It provides:
+- a callback-based SPI transport boundary, so the board-specific SPI host and GPIO allocation remain separate;
+- a runtime identity query and response validation;
+- protocol version, firmware semantic version, 32-bit build ID, status and 16-bit capability reporting;
+- CRC-16/CCITT-FALSE validation;
+- a firmware update API that currently fails closed with `ESP_ERR_NOT_SUPPORTED`.
+
+### 11.1 Application-level SPI identity protocol
+
+This is a new gateway application protocol. It is **not** the WCH ROM UART ISP protocol and does not alter its framing.
+
+The CH552 slave consumes a request in one CS transaction and returns the prepared response in the next CS transaction. The P4 callback must therefore perform one complete CS assertion per call.
+
+Request frame (8 bytes, little-endian CRC):
+| Offset | Field | Value |
+|---:|---|---|
+| 0 | Magic | `0xC5` |
+| 1 | Magic | `0x5A` |
+| 2 | Protocol | `0x01` |
+| 3 | Command | `0x01` = GET_IDENTITY; `0x00` = NOP |
+| 4 | Sequence | Incrementing 8-bit sequence |
+| 5 | Reserved | `0x00` |
+| 6–7 | CRC16 | CRC-16/CCITT-FALSE over bytes 0–5 |
+
+Response frame (17 bytes, little-endian fields and CRC):
+| Offset | Field |
+|---:|---|
+| 0–1 | Magic `C5 5A` |
+| 2 | Protocol revision |
+| 3 | Echoed command (`GET_IDENTITY`) |
+| 4 | Echoed sequence |
+| 5 | Status (`0` = READY) |
+| 6–8 | Firmware major, minor, patch |
+| 9–12 | 32-bit build ID |
+| 13–14 | 16-bit capability flags |
+| 15–16 | CRC16 over bytes 0–14 |
+
+The P4 sends GET_IDENTITY (8 bytes), then clocks the response in a second transaction (17 bytes) while sending NOP. It accepts the response only if magic, protocol revision, command, sequence, READY status and CRC all match.
+
+The CH552-side SPI slave implementation is still required. The protocol is deliberately transaction-oriented to accommodate the CH552's one-byte SPI FIFO; the slave must buffer the complete request and prepare the response before the next CS transaction. The initial bus rate remains 1 MHz pending bench validation.
+
+### 11.2 Firmware update pipeline and safety interlock
+
+The intended update sequence is:
+
+1. Read the running application identity over SPI.
+2. Compare it with the P4's required image manifest.
+3. Stop HID/vendor traffic and complete the SPI-to-UART pin-mux transition.
+4. Request application-assisted BOOT_REQ handoff.
+5. Detect the ROM bootloader and identify its revision using read-only commands.
+6. Validate image target, size, version and integrity.
+7. Program application flash only, with per-block acknowledgement and final verification.
+8. Exit ISP, return shared pins to high impedance, and wait for application startup.
+9. Read identity over SPI again and accept the update only if the expected version/build ID is reported.
+
+**Current implementation boundary:** the P4 manager exposes `ch552_manager_update()`, but it intentionally returns `ESP_ERR_NOT_SUPPORTED` without touching UART or flash. The exact A1/A7 read-only ISP packet formats still need to be derived from the reviewed source and checked against the actual QT Py ROM revision. More importantly, the A4 erase command's physical coverage is unknown. No erase, write, A8 boot-option command or automatic flash operation is implemented.
+
+The update backend must not be enabled until all of these are proven:
+- actual QT Py ROM bootloader revision and exact packet/response framing;
+- erase coverage and application-only write range;
+- no write/erase access to `0x3FF8–0x3FFF`;
+- no implicit A8 configuration/boot-option write;
+- successful application verification after programming.
+
+### 11.3 Integration status
+
+The manager source is registered with the ESP-IDF component, but it is not yet called from `usb_gateway_init()`. This is intentional: the P4 GPIO allocation, SPI host instance and CH552 board wiring have not yet been finalized. No UART/SPI pin routing, USB controller allocation, Host/Device PHY configuration or existing gateway behavior was changed.
+
+No ESP-IDF build, unit test, flash operation or hardware test is claimed for this change.
