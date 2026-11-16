@@ -16,28 +16,7 @@
 #include <stdint.h>
 #include "src/userUsbHidKeyboard/USBHIDKeyboard.h"
 
-/* CH552 special-function registers. */
-__sfr __at (0x88) TCON;
-__sfr __at (0x90) P1;
-__sfr __at (0x92) P1_MOD_OC;
-__sfr __at (0x93) P1_DIR_PU;
-__sfr __at (0xA8) IE;
-__sfr __at (0xB0) P3;
-__sfr __at (0xB2) P3_MOD_OC;
-__sfr __at (0xB3) P3_DIR_PU;
-__sfr __at (0xD6) USB_CTRL;
-__sfr __at (0xE8) IE_EX;
-__sfr __at (0xF8) SPI0_STAT;
-__sfr __at (0xF9) SPI0_DATA;
-__sfr __at (0xFA) SPI0_CTRL;
-__sfr __at (0xFB) SPI0_S_PRE;
-__sfr __at (0xFC) SPI0_SETUP;
-
-__sbit __at (0x88) IT0;
-__sbit __at (0xA8) EX0;
-__sbit __at (0xAF) EA;
-__sbit __at (0xFC) S0_IF_BYTE;
-__sbit __at (0xFD) S0_IF_FIRST;
+/* CH552 SFR declarations are provided by the ch55xduino core. */
 
 #define SPI_IRQ_ENABLE		0x01U
 #define SPI_MODE_SLAVE		0x80U
