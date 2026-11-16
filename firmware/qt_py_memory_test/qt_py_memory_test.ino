@@ -35,7 +35,10 @@
 #define STATUS_BAD_FRAME	0x01U
 
 #define REQUEST_LENGTH		8U
+#define REQUEST_MAX_LENGTH	72U
 #define RESPONSE_LENGTH		17U
+#define G815_KEYBOARD_REPORT_MAX	8U
+#define G815_VENDOR_REPORT_MAX	64U
 
 #define FW_VERSION_MAJOR	0U
 #define FW_VERSION_MINOR	1U
@@ -60,11 +63,16 @@
 
 
 /*
- * USB endpoint memory is allocated by the ch55xduino user148 profile.
- * The two SPI frames use 25 bytes of xRAM in total.
+ * USB endpoint DMA memory is reserved separately by the ch55xduino
+ * user148 profile. These xRAM buffers model the P4-to-CH552 report path:
+ * maximum SPI request, identity response, keyboard report and vendor report.
+ * The request buffer is sized for a 6-byte header, 64-byte payload and CRC.
  */
-static __xdata uint8_t request_frame[REQUEST_LENGTH];
+static __xdata uint8_t request_frame[REQUEST_MAX_LENGTH];
 static __xdata uint8_t response_frame[RESPONSE_LENGTH];
+static __xdata volatile uint8_t keyboard_report_buffer[G815_KEYBOARD_REPORT_MAX];
+static __xdata volatile uint8_t vendor_report_buffer[G815_VENDOR_REPORT_MAX];
+static __data volatile uint8_t memory_probe_sink;
 static __data uint8_t spi_index;
 static __data uint8_t spi_phase;
 
@@ -234,5 +242,8 @@ void setup(void)
 
 void loop(void)
 {
+	/* Keep the target report staging buffers present for the memory probe. */
+	memory_probe_sink = keyboard_report_buffer[0] ^ vendor_report_buffer[0];
+
 	/* USB servicing is interrupt-driven by the ch55xduino HID stack. */
 }
