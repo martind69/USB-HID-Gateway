@@ -14,7 +14,7 @@ Programming role: factory ROM bootloader via UART1
 | P1.6 | UART1 RXD1 | SPI0 MISO |
 | P1.7 | UART1 TXD1 | SPI0 SCK |
 | P3.4 | Not used for factory UART ISP | Available GPIO |
-| P3.2 | Not used for factory UART ISP | Available GPIO |
+| P3.2 | Not used for factory UART ISP | BOOT_REQ / INT0 |
 
 UART wiring is crossed:
 
@@ -45,7 +45,7 @@ P1.6 and P1.7 are shared between UART1 and SPI0. The P4 must switch its own peri
 
 ### 2.3 Dedicated bootloader request
 
-Reserve one additional CH552 interrupt-capable GPIO as BOOT_REQ, separate from P1.4-P1.7. Prefer P3.3/INT1 if it is physically exposed on the selected QT Py revision; otherwise select another exposed interrupt-capable pin after checking the board schematic.
+Reserve P3.2/INT0 as BOOT_REQ. It is separate from P1.4-P1.7 and is available on the selected QT Py board. P3.4 remains unused by the programming and runtime buses.
 
 - P4 drives BOOT_REQ through an AC-coupling capacitor, following the DTR-to-interrupt approach documented by ch55xduino.
 - The CH552 application enables the corresponding external interrupt and implements the bootloader handoff code in its interrupt handler.
@@ -199,7 +199,7 @@ Keep this application-level SPI protocol independent of Logitech HID report form
 The following items are not considered proven until measured on the actual QT Py:
 
 1. UART1 factory ISP programming at VCC=V33=3.3 V. The user's practical experience supports this operating point, but WCH datasheet version 1G explicitly states that UART/USB ISP downloading requires temporary 5 V. This is a documented discrepancy and must be resolved by bench test before PCB freeze. Do not apply 5 V to VCC while V33 is tied directly to 3.3 V.
-2. Exact BOOT_REQ interrupt pin exposed by the QT Py, interrupt polarity, capacitor/bias network and tested application handoff code.
+2. BOOT_REQ pulse polarity, capacitor/bias network and tested application handoff code on P3.2/INT0.
 3. Exact UART ISP baud rate, detection timing, timeout and programming protocol for the QT Py's factory bootloader revision.
 4. Whether a full power removal of the QT Py module is required for recovery, and the minimum off-time needed for POR.
 5. MISO high impedance when SCS is inactive.
