@@ -1,6 +1,6 @@
 # CH552 target USB profile: Logitech G815
 
-Status: descriptor-derived target specification; implementation and build verification pending.
+Status: descriptor-derived target specification with user-reconstructed HID report-descriptor candidates; implementation and build verification pending.
 
 Source capture: `DESCRIPTORs.pcapng`, supplied in the USB-HID-Gateway project conversation.
 
@@ -104,7 +104,7 @@ Do not infer exact xRAM use by simply adding 8 + 64 bytes. The USB controller/st
 
 ## 5. Acceptance criteria
 
-1. The exact G815 configuration and HID report descriptors are represented byte-for-byte.
+1. The G815 configuration and HID report descriptors are represented consistently; provisional reconstructed report descriptors are explicitly identified and can be replaced when raw capture evidence becomes available.
 2. The PC enumerates two G815 HID interfaces with endpoint addresses 0x81 and 0x82.
 3. Both interrupt-IN endpoints operate concurrently at their descriptor-defined intervals.
 4. The vendor interface supports the required Logitech control and interrupt report traffic; descriptor enumeration alone is not G HUB compatibility.
