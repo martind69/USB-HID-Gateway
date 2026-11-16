@@ -272,3 +272,20 @@ The user tested enumeration-stage delays from 10 ms through 50 ms. No change in 
 - No reset-hold, reset-recovery, debounce, PHY, `fsls_only`, hub configuration or board routing changes were made.
 
 Parked pending the user's electrical measurements. When resumed, instrument hub port status/change bits, reset completion and port enable, plus the first 8-byte `GET_DESCRIPTOR(Device)` control transfer. Capture the SETUP packet, HCD status, actual length, received descriptor bytes, channel errors and monotonic timestamps. If possible, correlate with a D+/D- capture at the CH334F downstream port. The current evidence does not justify further global delay changes.
+
+## CH552 secondary USB Device: boot and interface handoff (2026-11-16)
+
+The CH552 QT Py is specified as the second independent PC-facing USB Device controller. The ESP32-P4 remains the SPI master and firmware-update manager.
+
+Architecture documentation now defines:
+- UART ISP on the factory ROM bootloader's fixed P1.6 (RXD1) / P1.7 (TXD1) pins.
+- Runtime SPI0 slave on P1.4 (SCS), P1.5 (MOSI), P1.6 (MISO) and P1.7 (SCK).
+- Reuse of the same two P4 GPIO nets for UART and SPI through explicit peripheral-matrix and direction changes; separate UART and SPI P4 outputs must not be tied together.
+- P3.2/INT0 as the application-assisted BOOT_REQ input, using the ch55xduino-style capacitive interrupt coupling and an application interrupt handler that jumps to the ROM bootloader.
+- Explicit safe pin directions, CS pull-up, BOOT_REQ idle bias, transition order, version handshake and recovery boundaries.
+- A power-path warning: switching only an external 3.3 V feed does not power-cycle the QT Py while USB VBUS still feeds its onboard regulator. All supply paths must be isolated before a controlled cold-power reset can be claimed.
+
+The full sequence and electrical interface contract are in [CH552 boot, UART ISP and SPI runtime sequence](CH552_BOOT_SEQUENCE.md).
+
+Status: **architecture documented; no CH552 firmware, P4 update-manager code, PCB wiring or hardware validation is claimed.** Required bench gates include 3.3 V UART ISP, BOOT_REQ handoff, P1.6 MISO tri-state, SPI timing, USB enumeration after update and power-path/back-power checks.
+
