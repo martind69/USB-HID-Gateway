@@ -218,7 +218,7 @@ The documented fields of the writable word at `0x3FF8`/`0x3FF9` are:
 
 The Adafruit QT Py is treated as delivered with `En_RST_RESET=1`, as established for this project from the module-specific reference/board information. This is distinct from the WCH raw-chip recommendation of `0`. Do not generalize the Adafruit value to unconfigured WCH raw chips.
 
-**Project invariant: preserve the complete 16-bit word at `0x3FF8`/`0x3FF9) exactly as found on the Adafruit QT Py.** Also preserve the factory chip-ID words at `0x3FFA`–`0x3FFF`; they are identity data, not writable configuration fields. No bit is to be set, cleared, normalized or otherwise changed by the application build, firmware packaging, UART updater or recovery procedure.
+**Project invariant: preserve the complete 16-bit word at `0x3FF8`/`0x3FF9` exactly as found on the Adafruit QT Py.** Also preserve the factory chip-ID words at `0x3FFA`–`0x3FFF`; they are identity data, not writable configuration fields. No bit is to be set, cleared, normalized or otherwise changed by the application build, firmware packaging, UART updater or recovery procedure.
 
 Mandatory update-manager rules:
 
