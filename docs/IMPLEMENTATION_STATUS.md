@@ -289,3 +289,13 @@ The full sequence and electrical interface contract are in [CH552 boot, UART ISP
 
 Status: **architecture documented; no CH552 firmware, P4 update-manager code, PCB wiring or hardware validation is claimed.** Required bench gates include 3.3 V UART ISP, BOOT_REQ handoff, P1.6 MISO tri-state, SPI timing, USB enumeration after update and power-path/back-power checks.
 
+### Dedicated CH552 hardware RESET line (2026-11-16)
+
+The interface now includes a dedicated ESP32-P4 GPIO connected to the QT Py RESET pad / CH552 RST input. The QT Py remains continuously powered during normal operation and firmware updates.
+
+Electrical semantics are active HIGH: drive RST HIGH for the verified reset pulse, then LOW to release. The CH552 datasheet documents the configuration bit En_RST_RESET as disabled by default (0); the CH552 programming/configuration image must set it to 1 before this line can be relied upon. The reset input has an internal pull-down. External reset restarts execution at address 0; it is not treated as a guaranteed UART-ISP entry mechanism. BOOT_REQ remains a separate application-assisted ROM-bootloader handoff.
+
+The previous recommendation to use supply cycling as the normal reset/update mechanism is superseded. Cold power removal is now only a separate recovery/bring-up condition and must account for all QT Py supply paths, including USB VBUS.
+
+Status: pin allocation and sequence documented; P4 GPIO number, reset pulse width, En_RST_RESET programming/readback and actual QT Py behavior remain to be confirmed. No hardware test is claimed.
+
