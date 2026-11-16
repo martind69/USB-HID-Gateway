@@ -18,3 +18,8 @@ gcc -std=c11 -Wall -Wextra -Werror -Icomponents/usb_gateway \
 The tests cover independent keyboard/mouse parser contexts, report layout,
 bit extraction, standard keyboard/mouse translation and disconnect release.
 They are run by `.github/workflows/host-hid-tests.yml` on pushes and pull requests to `architecture/proxy-motion-gateway`. They are not part of the ESP-IDF target build.
+
+The USB proxy descriptor-model tests validate complete Configuration descriptor
+streams, interface alternate settings, HID report-descriptor metadata,
+endpoint mappings, duplicate endpoints, and malformed lengths. They are also
+run by the same GitHub Actions workflow.
