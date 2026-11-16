@@ -197,20 +197,31 @@ Keep this application-level SPI protocol independent of Logitech HID report form
 
 ## 6. Firmware update configuration protection
 
-The Adafruit QT Py is treated as delivered with its factory CH552 configuration, including En_RST_RESET=1. This project does not customize the configuration bytes.
+The complete 16-bit Configuration Information Word is located at flash addresses `0x3FFE`/`0x3FFF`. It is loaded at power-on into the CH552 configuration state. The Adafruit QT Py factory configuration is the reference state for this project. In particular, `En_RST_RESET=1` is expected on the Adafruit module, although WCH raw-chip defaults differ.
+
+The following bit assignments and factory-state interpretation are the project reference:
+
+| Bit(s) | Field | Meaning / factory state |
+|---|---|---|
+| 15 | `bCODE_PROTECT` | Code-flash read protection; `1` = unprotected (standard) |
+| 14 | `bBOOT_LOAD` | Integrated USB bootloader after power-on; `1` = enabled (standard) |
+| 13 | `bDEBUG_EN` | Serial debug interface; `1` = enabled (standard) |
+| 12 | `En_RST_RESET` | External RESET input; WCH raw-chip default `0` = disabled; Adafruit QT Py factory state `1` = enabled |
+| 11–10 | `bLDO_VSEL` | Internal LDO output selection; factory state corresponds to 3.3 V |
+| 9 | `bDATA_FLASH_P` | DataFlash write protection; `1` = unprotected (standard) |
+| 8 | `bOSC_EN_XT` | Oscillator selection; `0` = internal oscillator (standard), `1` = external crystal |
+| 7–0 | Not specified here | Preserve unchanged; do not infer values or meanings from this summary |
+
+**Project invariant: preserve the entire 16-bit Configuration Information Word exactly as found on the Adafruit QT Py.** No bit is to be set, cleared, normalized or otherwise changed by the application build, firmware packaging, UART updater or recovery procedure. The table documents expected factory semantics; it is not permission to construct or write a replacement word.
 
 Mandatory update-manager rules:
 
 - Program application code only.
-- Do not issue commands that erase, rewrite or otherwise alter CH552 configuration bytes.
+- Do not issue commands that erase, rewrite or otherwise alter configuration bytes.
 - Do not generate a programming image that carries replacement configuration bytes.
 - Do not silently apply a programmer's default configuration template.
 - Before selecting an ISP implementation, inspect its source and document the exact flash address range and erase scope.
 - A successful application write is not proof that the factory configuration was preserved. Validate the configuration state independently during bring-up if the programmer's erase/write scope is not unambiguous.
-
-The [LoveMHz/vnproch55x](https://github.com/LoveMHz/vnproch55x) source repository contains a USB implementation: it opens the CH55x bootloader USB device (VID:PID 4348:55E0), checks for bootloader version 2.3.1, issues an erase command and writes a 10 KiB image in 56-byte blocks. This source does not establish that configuration bytes are preserved by every erase/program operation. Separately, the [UNIT-Electronics CH55x Arduino package](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt) defines two upload invocations: USB passes `-c {upload.bootcfg}`, while serial passes `-s {serial.port}` and does not pass `-c`. Its board definitions map `bootcfg=3` to P3.6 (D+) pull-up and `bootcfg=1` to P1.5 pull-down. This is useful evidence that the serial wrapper does not explicitly pass the USB boot-pin selection parameter, but the binary implementation and exact erase/write scope have not yet been reviewed. Do not infer configuration-byte preservation from the missing `-c` argument alone.
-
-The P4 UART1 ISP implementation remains a separate task. It must be based on the actual factory ROM bootloader's UART protocol and tested against the QT Py without changing the configuration bytes.
 
 ## 7. Electrical and firmware validation gates
 
@@ -295,7 +306,7 @@ The P4 peripheral matrix may route UART and SPI functions to the same two physic
 **Normal startup / external reset**
 1. Keep P4 shared pins high impedance; keep CS_N pulled high and BOOT_REQ inactive.
 2. Ensure CH552_RESET is LOW before enabling P4 peripheral functions.
-3. If the CH552 is already running, assert CH552_RESET HIGH for at least at least 1 us (datasheet minimum Trst is 70 ns), then drive it LOW. Use a conservative 1 ms pulse and validate on the QT Py.
+3. If the CH552 is already running, assert CH552_RESET HIGH for at least 1 us (datasheet minimum Trst is 70 ns), then drive it LOW. Use a conservative 1 ms pulse and validate on the QT Py.
 4. After release, wait for application startup and SPI READY; read protocol revision and firmware version before enabling gateway traffic.
 5. The Adafruit factory configuration is expected to enable the external RST input. If the actual QT Py does not respond to RESET, stop and investigate the board/configuration before considering any configuration change. Do not modify the configuration bits as a workaround.
 
