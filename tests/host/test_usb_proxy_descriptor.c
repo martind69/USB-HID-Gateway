@@ -88,6 +88,17 @@ static void test_rejects_duplicate_endpoint_in_alternate_setting(void)
 		&configuration, descriptor, sizeof(descriptor)) == USB_PROXY_DESC_ERR_DUPLICATE);
 }
 
+static void test_rejects_truncated_descriptor_header(void)
+{
+	uint8_t descriptor[sizeof(s_configuration)];
+	usb_proxy_configuration_t configuration;
+
+	memcpy(descriptor, s_configuration, sizeof(descriptor));
+	descriptor[sizeof(descriptor) - 7U] = 1U;
+	assert(usb_proxy_configuration_parse(
+		&configuration, descriptor, sizeof(descriptor)) == USB_PROXY_DESC_ERR_LENGTH);
+}
+
 static void test_rejects_invalid_endpoint_zero(void)
 {
 	uint8_t descriptor[sizeof(s_configuration)];
@@ -106,6 +117,7 @@ int main(void)
 	test_rejects_endpoint_count_mismatch();
 	test_rejects_duplicate_endpoint_in_alternate_setting();
 	test_rejects_invalid_endpoint_zero();
+	test_rejects_truncated_descriptor_header();
 
 	puts("USB proxy descriptor tests passed");
 	return 0;
