@@ -293,9 +293,18 @@ Status: **architecture documented; no CH552 firmware, P4 update-manager code, PC
 
 The interface now includes a dedicated ESP32-P4 GPIO connected to the QT Py RESET pad / CH552 RST input. The QT Py remains continuously powered during normal operation and firmware updates.
 
-Electrical semantics are active HIGH: drive RST HIGH for the verified reset pulse, then LOW to release. The CH552 datasheet documents the configuration bit En_RST_RESET as disabled by default (0); the CH552 programming/configuration image must set it to 1 before this line can be relied upon. The reset input has an internal pull-down. External reset restarts execution at address 0; it is not treated as a guaranteed UART-ISP entry mechanism. BOOT_REQ remains a separate application-assisted ROM-bootloader handoff.
+Electrical semantics are active HIGH: drive RST HIGH for the verified reset pulse, then LOW to release. The Adafruit QT Py is treated as delivered with En_RST_RESET=1. All CH552 factory configuration bits remain unchanged; neither the application image nor the P4 update manager may rewrite configuration bytes. External reset restarts execution at address 0; it is not treated as a guaranteed UART-ISP entry mechanism. BOOT_REQ remains a separate application-assisted ROM-bootloader handoff.
 
 The previous recommendation to use supply cycling as the normal reset/update mechanism is superseded. Cold power removal is now only a separate service/bring-up condition and must account for all QT Py supply paths, including USB VBUS. The WCH datasheet specifies a minimum external reset pulse width of 70 ns; the documented P4 firmware starting value is a conservative 1 ms pulse, subject to QT Py bench validation.
 
-Status: pin allocation and sequence documented; P4 GPIO number, En_RST_RESET programming/readback and actual QT Py behavior remain to be confirmed. The 1 ms reset pulse is a proposed conservative starting value, not a measured requirement. No hardware test is claimed.
+Status: pin allocation and sequence documented; P4 GPIO number and actual QT Py reset behavior remain to be confirmed. No CH552 configuration-bit change is authorized. The 1 ms reset pulse is a proposed conservative starting value, not a measured requirement. No hardware test is claimed.
 
+
+
+### CH552 factory configuration preservation (2026-11-16)
+
+The Adafruit QT Py is treated as delivered with En_RST_RESET=1. The dedicated P4-controlled active-HIGH RESET line remains part of the design, but no CH552 configuration bit may be changed.
+
+The update manager must write application code only and must not erase or rewrite configuration bytes. The referenced [LoveMHz/vnproch55x](https://github.com/LoveMHz/vnproch55x) source uses the CH55x USB bootloader (VID:PID 4348:55E0), explicitly checks bootloader 2.3.1, issues an erase command and writes a 10 KiB image in 56-byte blocks. It is not a UART1 programmer. Its source does not prove configuration-byte preservation, so it is a protocol/implementation reference only, not an approved P4 updater.
+
+The P4 UART1 updater still requires separate protocol selection and source review. Its flash and erase scope must be demonstrated not to modify factory configuration before it is used on the QT Py.
