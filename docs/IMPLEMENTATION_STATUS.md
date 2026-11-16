@@ -295,7 +295,7 @@ The interface now includes a dedicated ESP32-P4 GPIO connected to the QT Py RESE
 
 Electrical semantics are active HIGH: drive RST HIGH for the verified reset pulse, then LOW to release. The CH552 datasheet documents the configuration bit En_RST_RESET as disabled by default (0); the CH552 programming/configuration image must set it to 1 before this line can be relied upon. The reset input has an internal pull-down. External reset restarts execution at address 0; it is not treated as a guaranteed UART-ISP entry mechanism. BOOT_REQ remains a separate application-assisted ROM-bootloader handoff.
 
-The previous recommendation to use supply cycling as the normal reset/update mechanism is superseded. Cold power removal is now only a separate recovery/bring-up condition and must account for all QT Py supply paths, including USB VBUS.
+The previous recommendation to use supply cycling as the normal reset/update mechanism is superseded. Cold power removal is now only a separate service/bring-up condition and must account for all QT Py supply paths, including USB VBUS. The WCH datasheet specifies a minimum external reset pulse width of 70 ns; the documented P4 firmware starting value is a conservative 1 ms pulse, subject to QT Py bench validation.
 
-Status: pin allocation and sequence documented; P4 GPIO number, reset pulse width, En_RST_RESET programming/readback and actual QT Py behavior remain to be confirmed. No hardware test is claimed.
+Status: pin allocation and sequence documented; P4 GPIO number, En_RST_RESET programming/readback and actual QT Py behavior remain to be confirmed. The 1 ms reset pulse is a proposed conservative starting value, not a measured requirement. No hardware test is claimed.
 
