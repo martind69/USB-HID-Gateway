@@ -355,3 +355,16 @@ The sketch now records these target properties as inventory constants, but its c
 Added `docs/CH552_G815_USB_PROFILE.md` with the target descriptor profile and acceptance criteria. Updated the QT Py memory-baseline README and boot-sequence documentation. The next meaningful memory gate is a compile of the actual two-interface G815 profile with EP0, 8-byte endpoint 0x81, 64-byte endpoint 0x82, exact report descriptors, SPI manager and BOOT_REQ code. Endpoint RAM must be measured using the selected USB stack's actual allocation rules; do not infer it from packet sizes alone.
 
 Status: device allocation and descriptor-derived target requirements documented; composite USB implementation, exact report-descriptor extraction, ROM/RAM measurement, compilation, flashing, hardware validation and G HUB compatibility remain outstanding.
+
+
+### G815 WinHidDump collection descriptors received (2026-11-16)
+
+Added `docs/captures/G815_WINHIDDUMP_COLLECTIONS.md` with the exact six physical G815 Windows HID collection descriptors supplied by the user, including the interface-0 keyboard collection and five interface-1 collections. Updated `docs/CH552_G815_USB_PROFILE.md` with the collection mapping and Report IDs.
+
+Important distinction: WinHidDump exposes collection-level descriptors for Windows HID collection handles. They are not necessarily the byte-for-byte interface-level HID Report Descriptor streams referenced by the USB configuration descriptor (65 bytes for interface 0, 188 bytes for interface 1). The 460-byte descriptor shown under the separate `HID VHF Driver` path is a Windows virtual HID node, not the physical G815 USB interface, and is excluded from the G815 physical descriptor set.
+
+G815 vendor collections:
+- Report ID `0x11`: `0x98` bits = 19 report-data bytes (20 bytes including Report ID).
+- Report ID `0x12`: `0x1F8` bits = 63 report-data bytes (64 bytes including Report ID).
+
+These lengths align with the observed 20-byte and 64-byte vendor report sizes. Exact endpoint routing still requires correlation with the USB transfer capture. The raw 65-byte and 188-byte interface-level report descriptor streams remain to be extracted from USB `GET_DESCRIPTOR(Report)` responses. No descriptor implementation, compilation, memory measurement, flashing or hardware validation is claimed from this capture alone.
