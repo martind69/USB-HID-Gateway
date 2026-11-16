@@ -19,7 +19,7 @@ The current implementation is not a suitable transport foundation without a driv
 
 The Host API does support asynchronous control and non-control transfers. Completion callbacks are dispatched by the owning client's `usb_host_client_handle_events()` task. A control transfer starts with the eight-byte SETUP packet in its transfer buffer. See the official [ESP-IDF USB Host API](https://github.com/espressif/esp-usb/blob/master/host/usb/include/usb/usb_host.h).
 
-TinyUSB exposes dynamic Device/Configuration/String descriptor callbacks and `tud_control_xfer()`. Its public application callback `tud_vendor_control_xfer_cb()` is limited to Vendor-type requests. A universal bridge therefore requires a small, version-pinned extension at the Device control-request dispatch point. See [TinyUSB usbd.h](https://github.com/hathach/tinyusb/blob/master/src/device/usbd.h).
+TinyUSB exposes dynamic Device/Configuration/String descriptor callbacks and `tud_control_xfer()`. Its public application callback `tud_vendor_control_xfer_cb()` is limited to Vendor-type requests. The project now pins `espressif/esp_tinyusb` to 3.0.1, which bundles Espressif TinyUSB 0.21.0~6, and provides `scripts/apply_tinyusb_control_hook.ps1`. The patch adds `tud_control_request_cb()` before TinyUSB's built-in dispatch and exposes `tud_defer_func()` so Host completion callbacks can safely schedule control-stage completion in the TinyUSB task context. Run `idf.py reconfigure` followed by the PowerShell patch script. The patch is not applied automatically by CMake.
 
 ## Required ownership model
 
@@ -38,6 +38,8 @@ Do not run the Espressif HID class driver and the proxy's own interface manager 
 The existing Host diagnostic path should be folded into this owner or changed so it does not create a second competing lifecycle.
 
 ## Stage 1 — Descriptor-driven upstream enumeration
+
+A host-independent bounded parser/model is now present in `components/usb_gateway/usb_proxy_descriptor.c/.h`. It validates the complete configuration descriptor byte stream, tracks interface alternate settings, HID report descriptor lengths and endpoint properties, and exposes interface/endpoint lookup helpers. Host tests are in `tests/host/test_usb_proxy_descriptor.c`. This parser is not yet connected to the Host device lifecycle or TinyUSB descriptor callbacks.
 
 Store a validated downstream device model:
 
@@ -74,7 +76,7 @@ The first validation target is HID Interrupt IN and OUT. Bulk and isochronous su
 
 ## Stage 3 — EP0 Control-transfer bridge
 
-A generic upstream SETUP request must be captured before TinyUSB's built-in standard/class dispatch consumes it. Implement a small, version-pinned TinyUSB extension that offers the complete `tusb_control_request_t` and SETUP/DATA/ACK stage to the proxy.
+A generic upstream SETUP request must be captured before TinyUSB's built-in standard/class dispatch consumes it. The version-pinned extension described above provides the complete `tusb_control_request_t` and SETUP/DATA/ACK stages. The application hook and task-defer API are scaffolding only; the downstream transfer transaction manager is not yet implemented.
 
 The bridge must:
 
@@ -142,3 +144,21 @@ Do not change PHY routing, `fsls_only`, hub configuration, reset timing or the p
 ## Implementation order
 
 Implement Stages 1–3 as one coherent proxy core, but keep the test gates separate so failures can be localized. First remove the HID class driver's ownership, then add the descriptor model and endpoint manager, then add the TinyUSB control-dispatch extension and asynchronous EP0 bridge. Do not retain the current semantic translation as the primary forwarding path.
+
+## Current implementation checkpoint (2026-11-16)
+
+Committed:
+- Bounded Configuration descriptor model/parser and host-side tests.
+- GitHub Actions compiles the new parser test with strict warnings.
+- Exact `esp_tinyusb` component version pin at 3.0.1.
+- PowerShell patch script for the TinyUSB 0.21.0~6 generic SETUP hook and task-context deferred callback API.
+- Public declaration contract in `tinyusb_control_hook.h`.
+
+Not yet implemented:
+- Host lifecycle integration and descriptor snapshot storage.
+- Host interface ownership replacement for `usb_host_hid`.
+- Dynamic upstream descriptor generation and attach gating.
+- Endpoint transfer manager and raw IN/OUT forwarding.
+- Asynchronous EP0 transaction manager using the new callback/defer APIs.
+
+No ESP-IDF build or board test has been run for this checkpoint. Do not flash this intermediate state as a working proxy.
