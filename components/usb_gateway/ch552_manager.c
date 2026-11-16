@@ -57,8 +57,8 @@ static esp_err_t ch552_parse_identity(const uint8_t *frame,
 		return ESP_ERR_INVALID_RESPONSE;
 	}
 
-	received_crc = (uint16_t)frame[14] |
-		((uint16_t)frame[15] << 8);
+	received_crc = (uint16_t)frame[15] |
+		((uint16_t)frame[16] << 8);
 	calculated_crc = ch552_crc16_ccitt(frame,
 		CH552_MANAGER_RESPONSE_SIZE - 2U);
 
@@ -79,7 +79,8 @@ static esp_err_t ch552_parse_identity(const uint8_t *frame,
 		((uint32_t)frame[10] << 8) |
 		((uint32_t)frame[11] << 16) |
 		((uint32_t)frame[12] << 24);
-	identity->capabilities = (uint16_t)frame[13];
+	identity->capabilities = (uint16_t)frame[13] |
+		((uint16_t)frame[14] << 8);
 
 	return ESP_OK;
 }
