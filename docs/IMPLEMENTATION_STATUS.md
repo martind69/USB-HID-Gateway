@@ -333,3 +333,12 @@ The serial programmer source review uses [DeqingSun/vnproch551](https://github.c
 Added `components/usb_gateway/ch552_manager.c` and `include/ch552_manager.h`, registered in the ESP-IDF component. The P4-side API defines a callback-based SPI transport and validates a compact application identity response (protocol revision, firmware version, build ID, status, capabilities and CRC16). The request/response protocol is documented in `docs/CH552_BOOT_SEQUENCE.md`.
 
 The update API is deliberately fail-closed and returns `ESP_ERR_NOT_SUPPORTED`; it performs no UART or flash operation. The actual CH552 SPI slave, board-specific P4 transport integration, read-only ROM ISP probe and safe flash backend remain outstanding. The ROM erase range is still unverified, so automatic flashing is prohibited. No build, unit test or hardware test is claimed.
+
+
+## QT Py CH552 application memory baseline (2026-11-16)
+
+A first standalone CH55xduino sketch has been added at `firmware/qt_py_memory_test/qt_py_memory_test.ino`. It includes the temporary standard HID keyboard USB stack, the agreed P4↔CH552 SPI identity protocol (8-byte request / 17-byte response, CRC-16/CCITT-FALSE), and the P3.2/INT0 BOOT_REQ handoff. The sketch is intended to measure baseline code ROM, xRAM and internal RAM/stack use before adding Logitech vendor-specific behavior.
+
+Build settings: CH552 Board, internal 16 MHz / 3.3 V, P3.6 D+ bootloader pin, USB RAM profile `user148`. The ch55xduino README documents 148 bytes reserved for USB endpoint RAM and 876 bytes remaining xRAM under this profile. The CH552 provides 16 KiB program ROM, 256 bytes internal iRAM and 1 KiB xRAM. These are capacity figures, not a measured build result.
+
+The keyboard profile is only a temporary standard-HID stand-in. It does not implement G815/G502 descriptors or vendor control/report traffic, so its memory report is a lower-bound infrastructure measurement, not proof that the final Logitech emulator fits. No compiler is available in the current execution environment; the sketch has not been compiled, flashed or tested. Capture the ch55xduino compiler summary and generated map/mem files before drawing a capacity conclusion. No flash/configuration update is implemented.
