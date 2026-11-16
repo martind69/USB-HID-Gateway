@@ -1,6 +1,6 @@
 dependencies:
   espressif/esp_tinyusb:
-    version: "~3.0.0"
+    version: "3.0.1"
   espressif/usb:
     version: "~1.6.1"
   espressif/usb_host_hid:
