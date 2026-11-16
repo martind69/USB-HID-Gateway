@@ -37,6 +37,19 @@ Do not run the Espressif HID class driver and the proxy's own interface manager 
 
 The existing Host diagnostic path should be folded into this owner or changed so it does not create a second competing lifecycle.
 
+## Critical topology constraint — multiple downstream USB devices
+
+The current ESP32-P4 design has one Host role for the downstream topology and one Device role toward the PC. The Device controller enumerates as one USB device with one Device descriptor and one VID/PID. It can expose multiple interfaces in a composite configuration, but it cannot independently present the downstream G810 and G502 as two USB device addresses with their original VID/PID identities.
+
+This matters because the physical test topology places the G502 behind the G810's USB hub/pass-through. A single merged composite descriptor could expose both devices' interfaces, but it would not preserve two independent device identities. Interface-recipient requests may be routable by interface mapping; device-recipient vendor requests and software matching based on VID/PID cannot automatically be preserved.
+
+Therefore, before implementing the final descriptor generator, endpoint map and G HUB control routing, choose the intended upstream representation:
+
+- One composite proxy device combining interfaces from all downstream HID devices (single upstream VID/PID; G HUB compatibility must be experimentally established).
+- Two independently enumerated upstream USB devices (requires additional USB device-side hardware/controller architecture; the current single Device port alone cannot provide this).
+
+The initial descriptor parser is intentionally device-configuration scoped. It does not yet merge multiple downstream device configurations.
+
 ## Stage 1 — Descriptor-driven upstream enumeration
 
 A host-independent bounded parser/model is now present in `components/usb_gateway/usb_proxy_descriptor.c/.h`. It validates the complete configuration descriptor byte stream, tracks interface alternate settings, HID report descriptor lengths and endpoint properties, and exposes interface/endpoint lookup helpers. Host tests are in `tests/host/test_usb_proxy_descriptor.c`. This parser is not yet connected to the Host device lifecycle or TinyUSB descriptor callbacks.
