@@ -208,7 +208,7 @@ Mandatory update-manager rules:
 - Before selecting an ISP implementation, inspect its source and document the exact flash address range and erase scope.
 - A successful application write is not proof that the factory configuration was preserved. Validate the configuration state independently during bring-up if the programmer's erase/write scope is not unambiguous.
 
-The referenced [LoveMHz/vnproch55x](https://github.com/LoveMHz/vnproch55x) is a CH55x programmer reference, but its published implementation is USB-based: it opens the CH55x bootloader USB device (VID:PID 4348:55E0), checks for bootloader version 2.3.1, issues an erase command and writes a 10 KiB image in 56-byte blocks. It is therefore not the UART1 transport implementation for the P4. Its source does not establish that configuration bytes are preserved by every erase/program operation. Do not use it as evidence for either UART ISP compatibility or configuration-byte preservation.
+The referenced [LoveMHz/vnproch55x](https://github.com/LoveMHz/vnproch55x) source is USB-based: it opens the CH55x bootloader USB device (VID:PID 4348:55E0), checks for bootloader version 2.3.1, issues an erase command and writes a 10 KiB image in 56-byte blocks. This reviewed source is not the UART1 transport implementation for the P4, and it does not establish that configuration bytes are preserved by every erase/program operation. Separately, the [UNIT-Electronics CH55x Arduino package](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package) defines a `vnproch55x_serial` upload method that invokes an executable named `vnproch55x`; the serial executable's implementation and exact erase/write scope have not yet been reviewed. Do not assume the USB source and serial uploader have identical behavior.
 
 The P4 UART1 ISP implementation remains a separate task. It must be based on the actual factory ROM bootloader's UART protocol and tested against the QT Py without changing the configuration bytes.
 
@@ -353,5 +353,6 @@ Before enabling automatic updates, verify on the actual QT Py:
 - [Adafruit CH552 QT Py pinout and power description](https://learn.adafruit.com/adafruit-ch552-qt-py/pinouts)
 - [Adafruit CH552 QT Py guide: clock and USB bootloader settings](https://learn.adafruit.com/adafruit-ch552-qt-py)
 - [ch55xduino: UART1 serial upload and interrupt-based bootloader handoff](https://github.com/adafruit/ch55xduino)
+- [UNIT-Electronics CH55x package: separate `vnproch55x_serial` upload-tool mapping](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt)
 - [WCH CH552 datasheet](https://wch-ic.com)
 
