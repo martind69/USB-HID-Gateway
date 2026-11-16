@@ -112,3 +112,12 @@ Do not infer exact xRAM use by simply adding 8 + 64 bytes. The USB controller/st
 6. USB keyboard, vendor traffic, SPI management and BOOT_REQ behavior are tested together on the QT Py.
 
 No compilation, flash, USB enumeration, memory measurement or G HUB compatibility test is claimed by this specification.
+
+
+## 2.2 Required raw interface-level report-descriptor capture
+
+The next blocking input is the exact 65-byte interface-0 and 188-byte interface-1 HID Report Descriptor data stage. The Windows collection descriptors documented above are not substitutes.
+
+The capture procedure, exact Wireshark display filter, SETUP-field checks, packet reassembly rules, export format and validation gates are documented in [G815 raw HID report-descriptor capture procedure](captures/G815_REPORT_DESCRIPTOR_CAPTURE.md).
+
+Do not begin the final CH552 composite descriptor implementation until both byte arrays have been extracted and validated against their declared lengths. No report descriptor bytes are inferred or synthesized.
