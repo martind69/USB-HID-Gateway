@@ -1,0 +1,2 @@
+#include "analog_vector_io.h"
+esp_err_t analog_vector_io_init(analog_vector_io_t*i){for(int n=0;n<8;n++){i->dac_channel[n]=n;i->adc_channel[n]=7-n;}esp_err_t a=ads7128_init(&i->adc,0x10),d=dac7578_init(&i->dac,0x4c);return a&&a!=ESP_ERR_NOT_SUPPORTED?a:d;}esp_err_t analog_vector_io_read_channel(analog_vector_io_t*i,analog_hid_channel_t c,uint16_t*x){return ads7128_read_channel(&i->adc,i->adc_channel[c],x);}esp_err_t analog_vector_io_write_channel(analog_vector_io_t*i,analog_hid_channel_t c,uint16_t x){return dac7578_write_channel(&i->dac,i->dac_channel[c],x,true);}

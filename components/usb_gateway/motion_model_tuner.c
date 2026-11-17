@@ -1,0 +1,2 @@
+#include "motion_model_tuner.h"
+void motion_model_tuning_defaults(motion_model_tuning_t*t){*t=(motion_model_tuning_t){1,1,1,-1,1,-1};}motion_limits_t motion_model_tuner_apply(motion_limits_t l,const motion_model_tuning_t*t){l.velocity_max*=t->velocity_scale;l.acceleration_max*=t->acceleration_scale;l.jerk_max*=t->jerk_scale;l.response*=t->response_scale;if(t->deadzone_override>=0)l.deadzone=t->deadzone_override;if(t->damping_override>=0)l.damping=t->damping_override;return l;}

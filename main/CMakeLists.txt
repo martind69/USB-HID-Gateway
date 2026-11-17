@@ -1,5 +1,1 @@
-idf_component_register(
-	SRCS "main.c"
-	INCLUDE_DIRS "."
-	REQUIRES usb_gateway
-)
+idf_component_register(SRCS "main.c" INCLUDE_DIRS "." REQUIRES usb_gateway)

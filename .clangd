@@ -1,2 +1,2 @@
 CompileFlags:
-    Remove: [-f*, -m*]
+  Add: [-std=c17, -Wall, -Wextra]

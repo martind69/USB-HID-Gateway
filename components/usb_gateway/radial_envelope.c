@@ -1,0 +1,4 @@
+#include "radial_envelope.h"
+#include <math.h>
+#include <string.h>
+static unsigned b(float a){if(a<0)a+=6.2831853f;return(unsigned)(a*360/6.2831853f)%360;}void radial_envelope_reset(radial_envelope_t*e,float sf){memset(e,0,sizeof(*e));e->safety_factor=sf;}void radial_envelope_observe(radial_envelope_t*e,motion_vec2_t v){unsigned i=b(atan2f(v.y,v.x));float r=hypotf(v.x,v.y);if(r>e->radius[i])e->radius[i]=r;e->samples[i]++;}void radial_envelope_finalize(radial_envelope_t*e){for(unsigned i=0;i<360;i++)if(e->radius[i]<=0)e->radius[i]=1;e->valid=true;}motion_vec2_t radial_envelope_normalize(const radial_envelope_t*e,motion_vec2_t v){float r=hypotf(v.x,v.y);if(!e->valid||r<=0)return v;float m=e->radius[b(atan2f(v.y,v.x))]*e->safety_factor;float k=motion_clampf(r/m,0,1)/r;return(motion_vec2_t){v.x*k,v.y*k};}

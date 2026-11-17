@@ -1,21 +1,101 @@
 menu "USB HID Gateway"
 
-config USB_GATEWAY_USB_DEVICE_MOUSE_TEST
-	bool "Standalone USB Device HID mouse test mode"
-	default n
-	help
-		Expose only a standard HID mouse on the Full-Speed USB Device port.
-		After enumeration, send a short right/left movement and one left click.
-		The USB Host stack is not started in this mode.
+config USB_GATEWAY_ADS7128_ENABLE
+    bool "Enable ADS7128"
+    default y
 
-config USB_GATEWAY_ENUMERATION_STAGE_DELAY_MS
-	int "USB Host enumeration stage delay (ms)"
-	default 0
-	range 0 100
-	help
-		Diagnostic delay inserted between USB Host enumeration state-machine
-		stages in the patched espressif/usb component. Set to 0 to disable.
-		This option has no effect until scripts/apply_usb_enum_delay.ps1 has
-		patched the managed component source.
+config USB_GATEWAY_DAC7578_ENABLE
+    bool "Enable DAC7578"
+    default y
+
+config USB_GATEWAY_ANALOG_I3C_SDA
+    int "I3C SDA GPIO"
+    default 32
+
+config USB_GATEWAY_ANALOG_I3C_SCL
+    int "I3C SCL GPIO"
+    default 33
+
+config USB_GATEWAY_ANALOG_I3C_FREQ_HZ
+    int "Legacy I2C rate on I3C controller"
+    range 100000 1000000
+    default 1000000
+
+config USB_GATEWAY_PROFILE_EXPORT_HOTKEY_ENABLE
+    bool "Enable profile export hotkey"
+    default y
+
+config USB_GATEWAY_PROFILE_EXPORT_HID_USAGE
+    hex "Export hotkey HID usage"
+    range 0x04 0xE7
+    default 0x45
+    help
+        Default 0x45 corresponds to F12.
+
+config USB_GATEWAY_PROFILE_EXPORT_MODIFIER_MASK
+    hex "Required export hotkey modifier mask"
+    range 0x00 0xFF
+    default 0x05
+    help
+        Default 0x05 requires Left Ctrl and Left Alt.
+
+config USB_GATEWAY_STATUS_LEDS_ENABLE
+    bool "Enable status LEDs"
+    default y
+
+config USB_GATEWAY_STATUS_LED_BUSY_GPIO
+    int "Busy LED GPIO"
+    default 28
+
+config USB_GATEWAY_STATUS_LED_OK_GPIO
+    int "Success LED GPIO"
+    default 29
+
+config USB_GATEWAY_STATUS_LED_ERROR_GPIO
+    int "Error LED GPIO"
+    default 27
+
+config USB_GATEWAY_SSD1306_ENABLE
+    bool "Enable SSD1306 display"
+    default y
+
+config USB_GATEWAY_SSD1306_SPI_HOST
+    int "SSD1306 SPI host"
+    default 3
+
+config USB_GATEWAY_SSD1306_MOSI_GPIO
+    int "SSD1306 MOSI GPIO"
+    default 34
+
+config USB_GATEWAY_SSD1306_SCLK_GPIO
+    int "SSD1306 SCLK GPIO"
+    default 35
+
+config USB_GATEWAY_SSD1306_CS_GPIO
+    int "SSD1306 CS GPIO"
+    default 36
+
+config USB_GATEWAY_SSD1306_DC_GPIO
+    int "SSD1306 D/C GPIO"
+    default 37
+
+config USB_GATEWAY_SSD1306_RESET_GPIO
+    int "SSD1306 RESET GPIO"
+    default 38
+
+config USB_GATEWAY_SSD1306_SPI_HZ
+    int "SSD1306 SPI frequency"
+    range 1000000 10000000
+    default 8000000
+
+config USB_GATEWAY_SSD1306_CONTRAST
+    hex "SSD1306 contrast"
+    range 0x01 0xFF
+    default 0x7F
+
+config USB_GATEWAY_SSD1306_REFRESH_MS
+    int "SSD1306 minimum refresh period in milliseconds"
+    range 50 2000
+    default 200
 
 endmenu
