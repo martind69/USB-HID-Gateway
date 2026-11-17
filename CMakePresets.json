@@ -3,6 +3,7 @@
     "configurePresets": [
         {
             "name": "default",
+            "displayName": "Primary ESP32-P4",
             "generator": "Ninja",
             "binaryDir": "build/default",
             "cacheVariables": {
@@ -12,6 +13,7 @@
         },
         {
             "name": "production",
+            "displayName": "Primary ESP32-P4",
             "generator": "Ninja",
             "binaryDir": "build/production",
             "cacheVariables": {

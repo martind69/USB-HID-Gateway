@@ -1,4 +1,10 @@
 {
+    "idf.buildPath": "${workspaceFolder}/build/default",
+    "idf.sdkconfigFilePath": "${workspaceFolder}/build/default/sdkconfig",
+    "idf.sdkconfigDefaults": [
+        "sdkconfig.defaults"
+    ],
+    "idf.adapterTargetName": "esp32p4",
 	"editor.insertSpaces": false,
 	"editor.tabSize": 4,
 	"files.trimTrailingWhitespace": true,

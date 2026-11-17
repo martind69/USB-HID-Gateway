@@ -1,0 +1,16 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Secondary ESP32-S3",
+            "generator": "Ninja",
+            "binaryDir": "build/default",
+            "cacheVariables": {
+                "IDF_TARGET": "esp32s3",
+                "SDKCONFIG": "build/default/sdkconfig",
+                "SDKCONFIG_DEFAULTS": "sdkconfig.defaults"
+            }
+        }
+    ]
+}

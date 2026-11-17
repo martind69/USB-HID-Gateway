@@ -1,0 +1,9 @@
+{
+    "idf.buildPath": "${workspaceFolder}/build/default",
+    "idf.sdkconfigFilePath": "${workspaceFolder}/build/default/sdkconfig",
+    "idf.sdkconfigDefaults": [
+        "sdkconfig.defaults"
+    ],
+    "idf.adapterTargetName": "esp32s3",
+    "idf.currentSetup": "C:\\Tools\\Espressif\\esp-idf"
+}
