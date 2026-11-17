@@ -28,7 +28,7 @@ Date: 2026-11-15
 
 The user confirmed that the PC must enumerate the G815 and G502 as two separate USB devices with their original VID/PID values and independent USB device addresses. A single composite proxy device is rejected.
 
-The current P4 allocation uses one OTG controller as Host and one as Device. The preferred hardware direction for feasibility work is to retain these roles, add a second independently programmable USB Device MCU/controller, and connect both upstream Device controllers to a new PC-facing USB hub. The P4 remains the sole owner of the downstream Logitech Host bus; the second Device MCU receives control transactions and raw endpoint payloads over an inter-processor link. This architecture is not yet implemented or hardware-validated.
+The current P4 allocation uses one OTG controller as Host and one as Device. The selected hardware direction is to retain these roles and add an ESP32-S3 Mini as the second independently programmable USB Device controller. Both upstream Device controllers connect to separate downstream ports of a new PC-facing USB hub. The P4 remains the sole owner of the downstream Logitech Host bus; the second Device MCU receives control transactions and raw endpoint payloads over an inter-processor link. This architecture is not yet implemented or hardware-validated.
 
 The PC-facing hub would expose two separate child devices but adds a hub node to the path. The observed topology places G815 and G502 as siblings behind the ASUS monitor's Genesys Logic hub (05E3:0610); the G815 pass-through is cable-only, not an internal hub. G HUB compatibility still requires checking whether the new hub/port path matters. Do not model G502 as a child of a G815 hub or continue with a merged composite descriptor. See `docs/USB_UPSTREAM_MULTI_DEVICE_ARCHITECTURE.md` and `docs/USB_PROXY_IMPLEMENTATION.md`.
 
@@ -273,114 +273,15 @@ The user tested enumeration-stage delays from 10 ms through 50 ms. No change in 
 
 Parked pending the user's electrical measurements. When resumed, instrument hub port status/change bits, reset completion and port enable, plus the first 8-byte `GET_DESCRIPTOR(Device)` control transfer. Capture the SETUP packet, HCD status, actual length, received descriptor bytes, channel errors and monotonic timestamps. If possible, correlate with a D+/D- capture at the CH334F downstream port. The current evidence does not justify further global delay changes.
 
-## CH552 secondary USB Device: boot and interface handoff (2026-11-16)
 
-The CH552 QT Py is specified as the second independent PC-facing USB Device controller. The ESP32-P4 remains the SPI master and firmware-update manager.
+## Secondary USB Device decision: ESP32-S3 Mini (2026-11-17)
 
-Architecture documentation now defines:
-- UART ISP on the factory ROM bootloader's fixed P1.6 (RXD1) / P1.7 (TXD1) pins.
-- Runtime SPI0 slave on P1.4 (SCS), P1.5 (MOSI), P1.6 (MISO) and P1.7 (SCK).
-- Reuse of the same two P4 GPIO nets for UART and SPI through explicit peripheral-matrix and direction changes; separate UART and SPI P4 outputs must not be tied together.
-- P3.2/INT0 as the application-assisted BOOT_REQ input, using the ch55xduino-style capacitive interrupt coupling and an application interrupt handler that jumps to the ROM bootloader.
-- Explicit safe pin directions, CS pull-up, BOOT_REQ idle bias, transition order, version handshake and recovery boundaries.
-- A power-path warning: switching only an external 3.3 V feed does not power-cycle the QT Py while USB VBUS still feeds its onboard regulator. All supply paths must be isolated before a controlled cold-power reset can be claimed.
+The secondary USB Device controller is selected as an ESP32-S3 Mini Development Board. The ESP32-P4 remains the sole owner of the physical Logitech Host bus and continues to emulate the G502. The S3 independently emulates the G815 so the PC enumerates two separate USB devices with the observed identities 046D:C33F and 046D:C08B.
 
-The full sequence and electrical interface contract are in [CH552 boot, UART ISP and SPI runtime sequence](CH552_BOOT_SEQUENCE.md).
+The S3 has a programmable Full-Speed USB OTG controller. Native USB uses GPIO19 (D−) and GPIO20 (D+); the fixed-function USB Serial/JTAG controller is not used as the HID Device. The exact board revision and USB-C net routing must be verified before hardware connection. The current proposed SPI assignment is SCLK=GPIO6, MOSI=GPIO7, MISO=GPIO8, CS_N=GPIO9, LINK_IRQ=GPIO10 and RESET_N=GPIO21; all proposed pins remain subject to exact-board schematic and continuity checks.
 
-Status: **architecture documented; no CH552 firmware, P4 update-manager code, PCB wiring or hardware validation is claimed.** Required bench gates include 3.3 V UART ISP, BOOT_REQ handoff, P1.6 MISO tri-state, SPI timing, USB enumeration after update and power-path/back-power checks.
+A separate ESP-IDF application has been scaffolded at firmware/secondary_s3 for target esp32s3. It uses esp_tinyusb 3.0.1, exposes two HID interfaces with endpoints 0x81 (8-byte keyboard) and 0x82 (64-byte vendor interface), and provides a fixed 72-byte CRC-16/CCITT-FALSE SPI slave frame path. The G815 VID/PID is set to the observed 046D:C33F. The report descriptors and device strings are provisional; the vendor descriptor is based on Windows collection evidence and is not a byte-exact reconstruction of the raw USB report descriptor.
 
-### Dedicated CH552 hardware RESET line (2026-11-16)
+The S3 application and P4 SPI master integration have not yet been built or tested together. The S3 board USB routing, SPI pin allocation, endpoint behavior, raw report forwarding, G HUB compatibility and recovery behavior remain validation gates. Automatic P4-controlled firmware update is excluded from the initial implementation; development flashing is performed directly to the S3.
 
-The interface now includes a dedicated ESP32-P4 GPIO connected to the QT Py RESET pad / CH552 RST input. The QT Py remains continuously powered during normal operation and firmware updates.
-
-Electrical semantics are active HIGH: drive RST HIGH for the verified reset pulse, then LOW to release. The writable 16-bit CH552 Configuration Information Word is at 0x3FF8/0x3FF9; 0x3FFE/0x3FFF are the final factory chip-ID word, not configuration bits. Preserve the complete configuration word and all factory chip-ID words at 0x3FFA–0x3FFF unchanged. The Adafruit QT Py is treated as delivered with En_RST_RESET=1, while WCH raw-chip recommendations differ. Neither the application image nor the P4 update manager may erase or rewrite the configuration or chip-ID area. External reset restarts execution at address 0; it is not treated as a guaranteed UART-ISP entry mechanism. BOOT_REQ remains a separate application-assisted ROM-bootloader handoff.
-
-The previous recommendation to use supply cycling as the normal reset/update mechanism is superseded. Cold power removal is now only a separate service/bring-up condition and must account for all QT Py supply paths, including USB VBUS. The WCH datasheet specifies a minimum external reset pulse width of 70 ns; the documented P4 firmware starting value is a conservative 1 ms pulse, subject to QT Py bench validation.
-
-Status: pin allocation and sequence documented; P4 GPIO number and actual QT Py reset behavior remain to be confirmed. No CH552 configuration-bit change is authorized. The 1 ms reset pulse is a proposed conservative starting value, not a measured requirement. No hardware test is claimed.
-
-
-
-### CH552 factory configuration preservation (2026-11-16)
-
-The Adafruit QT Py is treated as delivered with En_RST_RESET=1. The dedicated P4-controlled active-HIGH RESET line remains part of the design, but no CH552 configuration bit may be changed.
-
-The update manager must write application code only and must not erase or rewrite configuration bytes. The [LoveMHz/vnproch55x](https://github.com/LoveMHz/vnproch55x) source is USB-only and sends an erase command followed by application writes; it does not prove configuration-byte preservation. The [UNIT-Electronics CH55x package platform.txt](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt) maps USB uploads to `vnproch55x ... -c {upload.bootcfg}` and serial uploads to `vnproch55x -s {serial.port} -t {build.mcu} ...` without the `-c` argument. The separately reviewed [DeqingSun/vnproch551 source](https://github.com/DeqingSun/vnproch551) shows that omitting `-c` causes the default CH552 A8 boot-options write; `-c KEEP` skips that write. Therefore the stock serial recipe is not approved. The erase command's physical scope remains unverified.
-
-The P4 UART1 updater still requires a dedicated implementation and validation. Its flash and erase scope must be demonstrated not to modify factory configuration or chip-ID data before it is used on the QT Py.
-
-
-Configuration reference update (2026-11-16): `docs/CH552_BOOT_SEQUENCE.md` now records the complete WCH Table 6.2 bit assignments for the writable word at 0x3FF8/0x3FF9. The factory chip-ID words at 0x3FFA–0x3FFF are separately identified and must also be preserved unchanged. No programmer has yet been approved as safe for this requirement.
-
-
-### CH552 UART ISP source review (2026-11-16)
-
-The ch55xduino documentation confirms UART1 ISP support for CH552 (CH551 excluded) and an application-assisted interrupt handoff into the ROM bootloader. The DeqingSun `vnproch551/main.cpp` source implements UART1 at 57600 baud with TX prefix `57 AB` and RX prefix `55 AA`.
-
-Critical hazard: this source sends an A8 boot-options write when `-c` is omitted. Its source comment describes an 8-byte write relative to `ROM_CFG_ADDR-8` and the default CH552 option byte `0x03` (P3.6/D+ boot selection, P1.5 cleared). The special `-c KEEP` argument skips that write, but the UNIT-Electronics serial recipe does not pass `-c KEEP`. Thus the stock serial recipe is not safe for this project. The A8 source comment's address mapping must be reconciled with the WCH datasheet's configuration/ID map before any use.
-
-The source's erase command is `A4 01 00 08`; reverse-engineered discussion for a later V2.5 loader describes eight pages being deleted for V2.4 and later, but the page size and erase coverage for the QT Py's actual ROM version remain unverified. `-c KEEP` alone does not establish safe preservation of configuration or chip-ID memory.
-
-Important datasheet correction: writable Configuration Information is at 0x3FF8/0x3FF9. Addresses 0x3FFA–0x3FFF hold factory chip-ID words; 0x3FFE/0x3FFF are the final ID word. The configuration fields in Table 6.2 are Code_Protect, No_Boot_Load, En_Long_Reset, En_RST_RESET, reserved bits 11:10, Must_1 bit 9, Must_0 bit 8, and All_1 bits 7:0. The prior documentation incorrectly described 0x3FFE/0x3FFF as the configuration word and used several incorrect field names; this has been corrected in CH552_BOOT_SEQUENCE.md.
-
-Status: UART1 capability, 57600-baud framing and the A8 configuration-write hazard are source-confirmed. The stock UNIT-Electronics serial recipe omits -c KEEP and is not approved. The erase command's physical coverage and preservation of 0x3FF8–0x3FFF remain unverified. Automatic P4 flashing remains prohibited.
-
-The serial programmer source review uses [DeqingSun/vnproch551](https://github.com/DeqingSun/vnproch551), while the installed package recipe is defined separately in [UNIT-Electronics platform.txt](https://github.com/UNIT-Electronics/Uelectronics-CH552-Arduino-Package/blob/main/ch55x/platform.txt). Do not assume the binary shipped in a particular package release is byte-for-byte identical to the reviewed source without checking its version/build provenance.
-
-
-### CH552 management framework scaffold (2026-11-16)
-
-Added `components/usb_gateway/ch552_manager.c` and `include/ch552_manager.h`, registered in the ESP-IDF component. The P4-side API defines a callback-based SPI transport and validates a compact application identity response (protocol revision, firmware version, build ID, status, capabilities and CRC16). The request/response protocol is documented in `docs/CH552_BOOT_SEQUENCE.md`.
-
-The update API is deliberately fail-closed and returns `ESP_ERR_NOT_SUPPORTED`; it performs no UART or flash operation. The actual CH552 SPI slave, board-specific P4 transport integration, read-only ROM ISP probe and safe flash backend remain outstanding. The ROM erase range is still unverified, so automatic flashing is prohibited. No build, unit test or hardware test is claimed.
-
-
-## QT Py CH552 application memory baseline (2026-11-16)
-
-A first standalone CH55xduino sketch has been added at `firmware/qt_py_memory_test/qt_py_memory_test.ino`. It includes the temporary standard HID keyboard USB stack, the agreed P4↔CH552 SPI identity protocol (8-byte request / 17-byte response, CRC-16/CCITT-FALSE), and the P3.2/INT0 BOOT_REQ handoff. The sketch is intended to measure baseline code ROM, xRAM and internal RAM/stack use before adding Logitech vendor-specific behavior.
-
-Build settings: CH552 Board, internal 16 MHz / 3.3 V, P3.6 D+ bootloader pin, USB RAM profile `user148`. The ch55xduino README documents 148 bytes reserved for USB endpoint RAM and 876 bytes remaining xRAM under this profile. The CH552 provides 16 KiB program ROM, 256 bytes internal iRAM and 1 KiB xRAM. These are capacity figures, not a measured build result.
-
-The keyboard profile is only a temporary standard-HID stand-in. It does not implement G815/G502 descriptors or vendor control/report traffic, so its memory report is a lower-bound infrastructure measurement, not proof that the final Logitech emulator fits. No compiler is available in the current execution environment; the sketch has not been compiled, flashed or tested. Capture the ch55xduino compiler summary and generated map/mem files before drawing a capacity conclusion. No flash/configuration update is implemented.
-
-
-### CH552 G815 composite USB target profile (2026-11-16)
-
-The device allocation is now fixed for the next implementation stage: the CH552 QT Py emulates the Logitech G815 (`046D:C33F`); the ESP32-P4 emulates the G502 HERO (`046D:C08B`). This keeps the G502 regular mouse interrupt-IN report path (8-byte reports, approximately 1,000 reports/s in the supplied active capture excerpt) directly on the P4 rather than adding the CH552/SPI hop.
-
-The supplied `DESCRIPTORs.pcapng` descriptor summary identifies the G815 as a 59-byte configuration with two HID interfaces: interface 0 is boot keyboard (65-byte HID report descriptor, endpoint 0x81 IN, 8-byte maximum packet, bInterval=1); interface 1 is vendor-defined HID (188-byte HID report descriptor, endpoint 0x82 IN, 64-byte maximum packet, bInterval=1). Both endpoints must be active concurrently. At Full Speed, bInterval=1 requests a 1 ms polling interval.
-
-The sketch now records these target properties as inventory constants, but its current ch55xduino USBHIDKeyboard library remains a temporary single-interface stand-in. The constants do not implement the G815 descriptors. The exact HID report-descriptor byte arrays have not yet been extracted; they must be taken from the capture rather than guessed.
-
-Added `docs/CH552_G815_USB_PROFILE.md` with the target descriptor profile and acceptance criteria. Updated the QT Py memory-baseline README and boot-sequence documentation. The next meaningful memory gate is a compile of the actual two-interface G815 profile with EP0, 8-byte endpoint 0x81, 64-byte endpoint 0x82, exact report descriptors, SPI manager and BOOT_REQ code. Endpoint RAM must be measured using the selected USB stack's actual allocation rules; do not infer it from packet sizes alone.
-
-Status: device allocation and descriptor-derived target requirements documented; composite USB implementation, exact report-descriptor extraction, ROM/RAM measurement, compilation, flashing, hardware validation and G HUB compatibility remain outstanding.
-
-
-### G815 WinHidDump collection descriptors received (2026-11-16)
-
-Added `docs/captures/G815_WINHIDDUMP_COLLECTIONS.md` with the exact six physical G815 Windows HID collection descriptors supplied by the user, including the interface-0 keyboard collection and five interface-1 collections. Updated `docs/CH552_G815_USB_PROFILE.md` with the collection mapping and Report IDs.
-
-Important distinction: WinHidDump exposes collection-level descriptors for Windows HID collection handles. They are not necessarily the byte-for-byte interface-level HID Report Descriptor streams referenced by the USB configuration descriptor (65 bytes for interface 0, 188 bytes for interface 1). The 460-byte descriptor shown under the separate `HID VHF Driver` path is a Windows virtual HID node, not the physical G815 USB interface, and is excluded from the G815 physical descriptor set.
-
-G815 vendor collections:
-- Report ID `0x11`: `0x98` bits = 19 report-data bytes (20 bytes including Report ID).
-- Report ID `0x12`: `0x1F8` bits = 63 report-data bytes (64 bytes including Report ID).
-
-These lengths align with the observed 20-byte and 64-byte vendor report sizes. Exact endpoint routing still requires correlation with the USB transfer capture. The raw 65-byte and 188-byte interface-level report descriptor streams remain to be extracted from USB `GET_DESCRIPTOR(Report)` responses. No descriptor implementation, compilation, memory measurement, flashing or hardware validation is claimed from this capture alone.
-
-
-## CH552 G815 memory probe expansion (2026-11-16)
-
-The QT Py memory-sizing sketch now includes the intended P4-to-CH552 report-path staging footprint in addition to the existing SPI identity exchange:
-
-- 72-byte maximum request frame (6-byte header + 64-byte payload + 2-byte CRC);
-- 17-byte identity/command response;
-- 8-byte keyboard report staging buffer;
-- 64-byte vendor report staging buffer.
-
-This increases the explicit xRAM staging allocation from 25 bytes to 161 bytes. The existing two-interface USB endpoint DMA reservation remains separate and is provided by the ch55xduino `user148` profile. The new buffers are a memory-sizing probe; the variable-length SPI report transport and second USB IN endpoint are not yet implemented.
-
-The G815 report-descriptor arrays reconstructed by the user are now treated as provisional implementation data rather than a blocker for memory feasibility. The raw 65-byte and 188-byte USB report-descriptor streams remain desirable for later byte-exact refinement.
-
-**Next:** compile the expanded sketch with the selected ch55xduino package and `user148` setting. Record code ROM, xRAM, internal RAM/stack and map-file endpoint allocation. Then replace the temporary keyboard-only USB implementation with a CH552 dual-interface implementation using EP0 plus two independent interrupt-IN endpoints (8-byte keyboard and 64-byte vendor). No compile, flash or hardware test is claimed for the expanded memory probe.
+See docs/ESP32_S3_MINI_BOARD.md, docs/SECONDARY_S3_FRAMEWORK.md and docs/USB_UPSTREAM_MULTI_DEVICE_ARCHITECTURE.md.

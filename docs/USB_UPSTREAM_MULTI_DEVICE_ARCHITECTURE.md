@@ -2,149 +2,83 @@
 
 ## Binding requirement
 
-The PC must enumerate the Logitech G815 and Logitech G502 as two separate USB devices. Each must retain its own downstream Device Descriptor identity (VID/PID), configuration, interfaces, endpoints and device-recipient control-request context. A single composite USB device is not acceptable.
+The PC must enumerate the Logitech G815 and Logitech G502 as two separate USB devices. Each must retain its own Device Descriptor identity (VID/PID), configuration, interfaces, endpoints and device-recipient control-request context. A single composite USB device is not acceptable.
 
-This is a confirmed project requirement, not an open architecture choice.
+## Selected architecture
 
-## Why the current single-device proxy cannot meet it
+The ESP32-P4 remains the main gateway and sole owner of the downstream USB Host bus. It emulates the G502 directly. A separate ESP32-S3 Mini emulates the G815. Both USB Device controllers connect to separate downstream ports of a PC-facing USB hub.
 
-A USB Device controller represents one USB device address on one upstream USB bus. A composite configuration can contain multiple interfaces, but it is still one device address and one Device Descriptor. It cannot create two independent child device addresses or two independent VID/PID identities.
+    PC
+     |
+    PC-facing USB hub
+     |                         |
+    ESP32-P4 USB Device       ESP32-S3 USB Device
+    G502 (046D:C08B)          G815 (046D:C33F)
+     |                         |
+     +----------- SPI ---------+
+                 |
+             ESP32-P4
+                 |
+          USB Host controller
+                 |
+       Existing downstream hub
+                 |
+          Physical G815 + G502
 
-The current ESP32-P4 design uses:
-- One OTG controller in Host mode for the downstream Logitech topology.
-- One OTG controller in Device mode toward the PC.
+The PC sees one gateway hub and two independent child devices. The S3 does not enumerate the physical Logitech devices; it receives the G815 proxy reports and control transactions from the P4 over SPI. The P4 remains the source of truth for the physical devices.
 
-The ESP32-P4 has one High-Speed and one Full-Speed OTG controller. Both support Host or Device operation in hardware. The current firmware uses one in each role. The USB Serial/JTAG controller is dedicated to serial/JTAG/download functionality and is not a third general-purpose TinyUSB Device controller.
+## Why two Device controllers are required
 
-Espressif's current USB Device Stack documentation describes one High-Speed and one Full-Speed Device peripheral, but does not document two independent simultaneous TinyUSB Device instances. A dual-device implementation on one P4 must therefore not be assumed to work merely because the silicon contains two OTG controllers. See the [ESP32-P4 USB Device Stack documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32p4/api-reference/peripherals/usb_device.html) and [ESP32-P4 datasheet](https://documentation.espressif.com/esp32-p4_datasheet_en.html).
+A USB composite configuration still represents one USB device address and one Device Descriptor. It cannot expose two independent VID/PID identities. The P4's current design uses one OTG controller as Host and one as Device; the S3 adds the second independent upstream Device instance without changing the P4's existing Host/Device allocation.
 
-## Candidate architecture: preserve current P4 roles and add one upstream Device node
+The USB Serial/JTAG controller on either MCU is fixed-function and is not treated as a general-purpose HID Device controller.
 
-Preferred direction for investigation:
+## ESP32-S3 Mini selection
 
-~~~text
-                         PC (one USB cable)
-                                |
-                       [PC-facing USB hub]
-                         /             \
-                        /               \
-              [P4 USB Device]     [Secondary USB Device MCU]
-                     |                       |
-                 SPI / IPC              SPI / IPC
-                     \                       /
-                      \                     /
-                       [ESP32-P4 Gateway]
-                                |
-                         USB Host controller
-                                |
-                    [Existing downstream hub path]
-                                |
-                       Logitech G815 + G502
-~~~
+The secondary controller is an ESP32-S3 Mini Development Board. Its programmable Full-Speed USB OTG controller uses GPIO19 (D−) and GPIO20 (D+). The board is suitable only if its USB-C connector is routed directly to those native USB pins. Exact product revision and continuity must be checked before hardware integration.
 
-The diagram is logical: the P4 remains the main gateway and owns the downstream Host stack. Its existing Device controller proxies one Logitech device. A second MCU or dedicated Device controller proxies the other. Both Device-side controllers connect to separate downstream ports of a new PC-facing USB hub. The hub's upstream port connects to the PC.
+The current proposed S3 SPI pin assignment is SCLK GPIO6, MOSI GPIO7, MISO GPIO8, CS_N GPIO9, LINK_IRQ GPIO10 and RESET_N GPIO21. This allocation is provisional pending exact-board schematic and pinout verification. The P4-side SPI pins are not yet fixed.
 
-The PC then sees:
-- One physical hub introduced by the gateway.
-- Two separate child USB devices, each with its own address and original VID/PID.
+## G815 USB interface target
 
-This preserves the requested two-device identity while retaining the existing P4 Host + Device controller allocation. It requires additional hardware: a PC-facing hub and a second independently programmable USB Device controller. The current U14 CH334F is in the downstream path toward the P4 Host; it must not be assumed reusable as the PC-facing hub without a schematic/routing review.
+The observed G815 configuration contains two HID interfaces:
+
+| Interface | Function | Interrupt IN | Max packet | bInterval |
+|---|---|---|---:|---:|
+| 0 | Boot keyboard | 0x81 | 8 bytes | 1 |
+| 1 | Vendor-defined HID | 0x82 | 64 bytes | 1 |
+
+The S3 framework advertises these two interfaces and the observed VID/PID 046D:C33F. The current vendor report descriptor is provisional and based on Windows HID collection evidence (including Report IDs 0x11 and 0x12). The raw interface-level 65-byte and 188-byte report descriptor streams must be captured and used before claiming byte-exact descriptor fidelity.
 
 ## Data and control ownership
 
-The P4 remains the sole owner of the downstream Host bus and the source of truth for both real Logitech devices.
+The P4 owns downstream USB Host enumeration and physical G815/G502 lifecycle, downstream control transfers and interrupt endpoint polling, per-device descriptor/configuration snapshots and endpoint state, routing decisions, report scheduling and the G502 emulation path.
 
-For each proxied device, the upstream Device endpoint must have a stable device-slot association:
-- Device slot / downstream Host device handle.
-- Original Device Descriptor and active Configuration descriptor.
-- Per-device interface and endpoint map.
-- Per-device EP0 control-transfer state.
-- Per-endpoint transfer queues and in-flight state.
-- Disconnect, reset and re-enumeration lifecycle.
+The S3 owns independent upstream USB Device enumeration for the G815, G815-facing EP0 state and keyboard/vendor HID endpoints, USB Device callbacks and endpoint readiness, and conversion of framed SPI messages into G815 upstream reports.
 
-The secondary Device MCU must not independently enumerate the physical Logitech devices. It receives proxy transactions and report payloads from the P4 over a framed inter-processor link (SPI is the first candidate). The link must support asynchronous request/response correlation, bounded queues, transfer cancellation, backpressure and disconnect notification. Raw USB payloads must not be semantically rewritten in this transport.
+The SPI transport must preserve raw report payloads, request/response correlation, sequence numbers, bounded buffering, backpressure and disconnect/reset notifications. It is not a USB bus and does not carry electrical USB transactions.
 
-For an upstream control request received by either Device-side controller:
-1. Preserve the complete SETUP packet and data stage.
-2. Identify the associated downstream device slot.
-3. Submit the corresponding asynchronous Host control transfer on the P4.
-4. Return the downstream result to the originating upstream Device controller.
-5. Keep EP0 transaction state independent for G815 and G502.
+## Initial SPI frame
 
-For interrupt endpoints, the P4 Host owns downstream transfers and forwards raw payloads to the correct upstream Device controller. The P4 can continue to observe copied HID reports for mapping without modifying the forwarded bytes.
+The initial S3 framework uses fixed 72-byte full-duplex frames: 6-byte header, 64-byte payload area and 2-byte CRC-16/CCITT-FALSE. The header contains magic, protocol version, message type, sequence and payload length. CRC is calculated over the first 70 bytes and stored little-endian. The P4 is master and S3 is slave; the response is prepared for the following transaction.
 
-## USB topology and G HUB caveat
+The message-type registry, complete P4 master driver, control-transfer command set and report scheduling remain to be implemented. The first firmware increment returns a status acknowledgement only.
 
-Separate VID/PID identities are necessary but may not be sufficient for complete G HUB compatibility.
+## G HUB compatibility
 
-The current USB topology analysis identifies the G815 and G502 as sibling devices behind the Genesys Logic hub (VID/PID 05E3:0610) integrated into the ASUS monitor. The G502 connection through the G815 pass-through is a cable-only path; it is not an additional USB hub. Do not model the G502 as a child of a G815-internal hub.
+Separate VID/PID identities are necessary but not sufficient for complete G HUB compatibility. The gateway introduces a new PC-facing hub node and changes the parent/port path compared with the original monitor topology. G HUB vendor control transfers, Feature reports, Output reports, endpoint traffic and device selection behavior must be captured and reproduced as required.
 
-A PC-facing gateway hub with the two proxy Device controllers on separate downstream ports would also expose the G815 and G502 as sibling devices. It would, however, add a new hub node and change the exact upstream parent/port path compared with the current monitor-hub topology.
+Do not model the G502 as a child of a G815-internal hub. Existing topology evidence places both devices as siblings below the monitor's Genesys Logic hub (05E3:0610); the G815 pass-through is a cable-only path.
 
-Before claiming full G HUB compatibility, capture and compare:
-- The G815 Device Descriptor and its interface/configuration tree.
-- The monitor's Genesys Logic hub identity and the observed port relationship for both devices.
-- The G502 Device Descriptor and its original parent/port relationship.
-- G HUB's vendor control transfers, recipient type, wIndex, interface/endpoint usage and device selection behavior.
+## Validation gates
 
-The available topology evidence does not justify emulating a G815-internal hub. The remaining question is whether G HUB depends on the monitor hub's identity or physical port path, or only on the two independent Logitech device identities and their control/report behavior.
+1. Confirm exact ESP32-S3 Mini board revision and USB-C routing to GPIO19/GPIO20.
+2. Build the S3 application for esp32s3.
+3. Verify two independent upstream device identities through the PC-facing hub.
+4. Verify the S3's two HID interfaces, endpoint addresses, packet sizes and polling interval.
+5. Implement and verify the P4 SPI master against the S3 fixed-frame slave.
+6. Forward raw keyboard and vendor reports without unintended modification.
+7. Implement the necessary EP0, Feature, Output and vendor control paths.
+8. Test Logitech G HUB profiles, RGB, media keys and other observed functions.
 
-## Available descriptor summary
-
-The prior capture analysis contains the following summarized endpoint information, but the original USBPcap files and complete raw descriptor dumps are not available in the repository:
-
-| Device | VID:PID | Speed | Interface summary | Reported Interrupt IN endpoints |
-|---|---|---|---|---|
-| Logitech G815 DE | 046D:C33F | Full-Speed | 2 HID interfaces | IF0: 0x81, 8 bytes; IF1: 0x82, 64 bytes |
-| Logitech G502 HERO | 046D:C08B | Full-Speed | 2 HID interfaces | IF0: 0x81, 8 bytes; IF1: 0x82, 20 bytes |
-
-Both reported endpoint intervals are 1 ms. This summary is useful for preliminary sizing only. It does not prove that the configurations contain no additional endpoints, alternate settings or class/vendor-specific descriptor requirements. The complete Device, Configuration, Interface, HID and Endpoint descriptor byte streams are still required before controller allocation can be finalized.
-
-## Controller allocation and endpoint audit
-
-Do not select the secondary MCU or assign G815/G502 to the P4 versus the secondary controller until the captured descriptors have been inventoried.
-
-Required audit per device:
-- USB speed and bMaxPacketSize0.
-- Number of interfaces and alternate settings.
-- Number of IN and OUT endpoints by transfer type.
-- Maximum packet size and interval per endpoint.
-- HID report descriptor lengths and report IDs.
-- Standard, HID class and vendor-specific control request sequences.
-- Whether any endpoint or request requires High-Speed operation.
-
-The P4's currently used PC-facing Device controller is Full-Speed. The upstream proxy therefore cannot advertise High-Speed operation through that port. The selected secondary controller must have enough endpoint resources for its assigned device. Its firmware stack must support a genuinely independent Device instance.
-
-## Alternatives and trade-offs
-
-### A. Add a second Device MCU plus a PC-facing hub
-
-- One PC cable.
-- Two separate device addresses and original VID/PID values.
-- Retains the current P4 Host + Device allocation.
-- Requires inter-MCU transport and additional PCB area/power.
-- Hub topology may differ from the original G815 internal hub arrangement.
-
-This is the preferred candidate for feasibility work.
-
-### B. Two separate PC cables
-
-Use two independent Device controllers, each connected directly to a separate PC USB port. This avoids the PC-facing hub, but the P4 still needs a downstream Host controller for the physical Logitech devices. It therefore also requires additional USB hardware and is not the preferred one-cable product topology.
-
-### C. One composite Device
-
-Rejected. It cannot satisfy the confirmed requirement for two separate USB device identities.
-
-## Implementation gate
-
-Do not continue implementing the single-composite upstream descriptor merger or interface-only vendor request routing.
-
-Next engineering steps:
-1. Extract and inventory the actual G815, G815 hub and G502 descriptors from the existing USBPcap captures.
-2. Determine whether G HUB requires the original hub hierarchy, not just separate VID/PID identities.
-3. Audit the P4's current USB Device endpoint budget against each device descriptor.
-4. Evaluate candidate secondary USB Device MCUs/stacks and a PC-facing hub controller.
-5. Define the inter-MCU transport protocol and ownership boundaries.
-6. Only then resume descriptor generation, endpoint forwarding and EP0 bridge implementation.
-
-No firmware build, hardware modification or G HUB compatibility test is claimed by this architecture note.
+No S3 build, P4/S3 integration test or G HUB compatibility test is claimed by this architecture note.
