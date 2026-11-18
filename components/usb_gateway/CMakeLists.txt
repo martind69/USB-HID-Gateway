@@ -1,13 +1,17 @@
 idf_component_register(
     SRCS
         "ads7128.c"
+        "analog_control_gpio.c"
         "analog_i3c_bus.c"
+        "analog_self_test.c"
         "analog_vector_io.c"
         "center_calibration.c"
         "continuous_motion_learner.c"
         "dac7578.c"
-        "dac_output.c"
         "diagnostics.c"
+        "g815_forwarder.c"
+        "gateway_self_test.c"
+        "gateway_test_metrics.c"
         "gpio_output.c"
         "hid_parser.c"
         "hid_proxy.c"
@@ -18,11 +22,15 @@ idf_component_register(
         "learned_motion_model.c"
         "mapping.c"
         "motion_model_tuner.c"
+        "motion_profile_cache.c"
+        "motion_profile_parser.c"
         "motion_profile_storage.c"
+        "p4_s3_link.c"
         "p4_s3_protocol.c"
         "profile_export.c"
         "profile_feedback.c"
         "radial_envelope.c"
+        "shared_spi_bus.c"
         "ssd1306_display.c"
         "trajectory_generator.c"
         "usb_device.c"
@@ -30,6 +38,14 @@ idf_component_register(
         "usb_host.c"
         "usb_host_hid.c"
         "usb_proxy_descriptor.c"
+        "usb_proxy_transport.c"
+        "verbose_capture.c"
+		"ssd1306_font.c"
+		"ssd1306_status_renderer.c"
+		"usb_proxy_control.c"
+		"sd_storage.c"
     INCLUDE_DIRS "." "include"
-    REQUIRES log freertos esp_timer esp_tinyusb usb usb_host_hid driver esp_driver_i3c mbedtls
+    REQUIRES
+        log freertos esp_timer esp_tinyusb usb usb_host_hid driver
+        esp_driver_i3c fatfs sdmmc mbedtls
 )

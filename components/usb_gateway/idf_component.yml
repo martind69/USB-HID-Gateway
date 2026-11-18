@@ -1,9 +1,5 @@
 dependencies:
-    espressif/esp_tinyusb:
-        version: "3.0.1"
-    espressif/usb:
-        version: "~1.6.1"
-    espressif/usb_host_hid:
-        version: "~1.2.1"
-    espressif/cjson:
-        version: "^1.7.19"
+    espressif/esp_tinyusb: "3.0.1"
+    espressif/usb: "~1.6.1"
+    espressif/usb_host_hid: "~1.2.1"
+    espressif/cjson: "^1.7.19"

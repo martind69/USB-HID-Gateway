@@ -425,18 +425,6 @@ esp_err_t motion_profile_validate(
     return error != NULL ? ESP_ERR_INVALID_ARG : ESP_OK;
 }
 
-esp_err_t motion_profile_load_json(
-    const char *path,
-    motion_profile_t *profile)
-{
-    (void)path;
-    (void)profile;
-
-    /* TODO(PROFILE-PARSER): Keep the existing strict parser implementation
-     * here. This replacement focuses on the build-safe schema-v1 serializer. */
-    return ESP_ERR_NOT_SUPPORTED;
-}
-
 esp_err_t motion_profile_save_json_atomic(
     const char *path,
     const motion_profile_t *profile)

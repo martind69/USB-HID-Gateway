@@ -1,11 +1,12 @@
 build/
+managed_components/
+firmware/secondary_s3/build/
+firmware/secondary_s3/managed_components/
 sdkconfig
 sdkconfig.old
 dependencies.lock
-.vscode/*
+.vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
 .DS_Store
-build/*
-managed_components/*
 Thumbs.db

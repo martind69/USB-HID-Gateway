@@ -1,36 +1,5 @@
-# motion_profile_storage.c build fix
+# USB HID Gateway complete consolidated project
 
-Replace:
+Full P4 and S3 project tree with the latest Shared-SPI, SSD1306, schema-v1 parser/serializer, self-test, verbose SD capture and test documentation.
 
-```text
-components/usb_gateway/motion_profile_storage.c
-```
-
-The previous generated source accidentally contained a literal line break inside:
-
-```c
-fputc('\n', file)
-```
-
-and was minified into one line, which obscured the syntax error.
-
-This replacement:
-
-- is normally formatted;
-- implements the complete schema-v1 serializer;
-- writes both stick envelopes;
-- writes all four trigger calibrations;
-- writes all 1440 learned cells;
-- writes tuning and GPIO mode/polarity;
-- uses `.tmp`, `fsync`, `.bak`, rename and rollback;
-- avoids double-closing the file;
-- returns on every code path.
-
-The parser function in this replacement deliberately returns `ESP_ERR_NOT_SUPPORTED`. If your current file already contains the complete strict parser, retain that function body and replace only the serializer/helper section. Otherwise this file is build-safe and preserves export functionality.
-
-Then run:
-
-```bat
-cd /d D:\Software\USB-HID-Gateway
-idf.py build
-```
+Important: files marked `TODO(MERGE-VALIDATED-...)` identify original USB/HID modules that must be retained from the user's currently build-capable working repository. They are present at canonical paths to keep this archive structurally complete, but this archive must be overlaid carefully rather than blindly replacing newer validated files.

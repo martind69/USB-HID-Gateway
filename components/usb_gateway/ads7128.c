@@ -8,7 +8,7 @@
 #define ADS7128_REG_DATA_CFG 0x02U
 #define ADS7128_REG_OPMODE_CFG 0x04U
 #define ADS7128_REG_CHANNEL_SEL 0x11U
-#define ADS7128_GENERAL_CFG_RST 0x01U
+#define ADS7128_GENERAL_CFG_RESET 0x01U
 #define ADS7128_TIMEOUT_MS 20
 
 static esp_err_t ads7128_write_register(
@@ -52,7 +52,7 @@ esp_err_t ads7128_init(ads7128_t *device, uint8_t address)
     error = ads7128_write_register(
         device,
         ADS7128_REG_GENERAL_CFG,
-        ADS7128_GENERAL_CFG_RST);
+        ADS7128_GENERAL_CFG_RESET);
     if (error != ESP_OK) {
         return error;
     }
@@ -116,4 +116,29 @@ esp_err_t ads7128_read_channel(
 
     return ESP_OK;
 #endif
+}
+
+esp_err_t ads7128_read_pair(
+    ads7128_t *device,
+    uint8_t channel_x,
+    uint8_t channel_y,
+    uint16_t *x,
+    uint16_t *y)
+{
+    if ((x == NULL) || (y == NULL)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t error = ads7128_read_channel(
+        device,
+        channel_x,
+        x);
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    return ads7128_read_channel(
+        device,
+        channel_y,
+        y);
 }

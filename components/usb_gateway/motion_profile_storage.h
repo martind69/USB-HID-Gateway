@@ -1,4 +1,7 @@
 #pragma once
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include "esp_err.h"
 #include "learned_motion_model.h"
 #include "motion_model_tuner.h"

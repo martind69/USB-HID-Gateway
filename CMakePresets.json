@@ -12,6 +12,17 @@
             }
         },
         {
+            "name": "verbose",
+            "displayName": "Primary ESP32-P4",
+            "generator": "Ninja",
+            "binaryDir": "build/verbose",
+            "cacheVariables": {
+                "IDF_TARGET": "esp32p4",
+                "SDKCONFIG": "build/verbose/sdkconfig",
+                "SDKCONFIG_DEFAULTS": "sdkconfig.defaults;sdkconfig.defaults.verbose"
+            }
+		},
+        {
             "name": "production",
             "displayName": "Primary ESP32-P4",
             "generator": "Ninja",
