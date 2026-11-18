@@ -76,10 +76,10 @@ config USB_GATEWAY_ANALOG_POWER_GPIO
     int "Hall/button power GPIO"
     default 0
 config USB_GATEWAY_ANALOG_POWER_OPEN_DRAIN
-    bool "Power output open-drain"
+    bool "Hall/button power output is open-drain"
     default n
 config USB_GATEWAY_ANALOG_POWER_ACTIVE_LOW
-    bool "Power output active-low"
+    bool "Hall/button power output is active-low"
     default n
 config USB_GATEWAY_PROFILE_EXPORT_HOTKEY_ENABLE
     bool "Enable profile export hotkey"
