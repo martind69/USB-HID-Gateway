@@ -120,7 +120,7 @@ static bool get_report_payload(
 	for (i = 0U; i < parser->report_count; ++i) {
 		const hid_parser_report_t *report = &parser->reports[i];
 
-		if (report->type == HID_REPORT_TYPE_INPUT &&
+		if (report->type == GATEWAY_HID_REPORT_TYPE_INPUT &&
 			report->report_id == *report_id) {
 			return *payload_length >= report->payload_bytes;
 		}
@@ -156,7 +156,7 @@ static void process_keyboard_fields(
 		const hid_parser_field_t *field = &parser->fields[i];
 		uint16_t element;
 
-		if (field->type != HID_REPORT_TYPE_INPUT ||
+		if (field->type != GATEWAY_HID_REPORT_TYPE_INPUT ||
 			field->report_id != report_id ||
 			field->usage_page != 0x07U || field->is_constant) {
 			continue;
@@ -247,7 +247,7 @@ static void process_mouse_fields(
 		const hid_parser_field_t *field = &parser->fields[i];
 		uint16_t element;
 
-		if (field->type != HID_REPORT_TYPE_INPUT ||
+		if (field->type != GATEWAY_HID_REPORT_TYPE_INPUT ||
 			field->report_id != report_id || field->is_constant) {
 			continue;
 		}

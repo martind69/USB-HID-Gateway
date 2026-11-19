@@ -1,12 +1,189 @@
 #include "motion_profile_cache.h"
-#include "mbedtls/sha256.h"
+
+#include "mbedtls/md.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
 #define CACHE_MAGIC 0x4D504331U
 #define CACHE_VERSION 1U
-typedef struct{uint32_t magic,version,payload_size;uint8_t hash[32];}cache_header_t;
-static esp_err_t hash_file(const char*p,uint8_t h[32]){FILE*f=fopen(p,"rb");if(!f)return ESP_ERR_NOT_FOUND;mbedtls_sha256_context c;mbedtls_sha256_init(&c);int rc=mbedtls_sha256_starts(&c,0);uint8_t b[1024];size_t n;while(rc==0&&(n=fread(b,1,sizeof b,f))>0)rc=mbedtls_sha256_update(&c,b,n);if(ferror(f))rc=-1;fclose(f);if(rc==0)rc=mbedtls_sha256_finish(&c,h);mbedtls_sha256_free(&c);return rc==0?ESP_OK:ESP_FAIL;}
-static esp_err_t read_cache(const char*p,const uint8_t h[32],motion_profile_t*x){FILE*f=fopen(p,"rb");if(!f)return ESP_ERR_NOT_FOUND;cache_header_t q;bool ok=fread(&q,1,sizeof q,f)==sizeof q&&q.magic==CACHE_MAGIC&&q.version==CACHE_VERSION&&q.payload_size==sizeof(*x)&&memcmp(q.hash,h,32)==0&&fread(x,1,sizeof(*x),f)==sizeof(*x)&&fgetc(f)==EOF;fclose(f);return ok&&motion_profile_validate(x,NULL,0)==ESP_OK?ESP_OK:ESP_ERR_INVALID_CRC;}
-static esp_err_t write_cache(const char*p,const uint8_t h[32],const motion_profile_t*x){char t[320],b[320];if(snprintf(t,sizeof t,"%s.tmp",p)>=(int)sizeof t||snprintf(b,sizeof b,"%s.bak",p)>=(int)sizeof b)return ESP_ERR_INVALID_SIZE;FILE*f=fopen(t,"wb");if(!f)return ESP_FAIL;cache_header_t q={CACHE_MAGIC,CACHE_VERSION,sizeof(*x),{0}};memcpy(q.hash,h,32);bool ok=fwrite(&q,1,sizeof q,f)==sizeof q&&fwrite(x,1,sizeof(*x),f)==sizeof(*x)&&fflush(f)==0&&fsync(fileno(f))==0&&fclose(f)==0;if(!ok){remove(t);return ESP_FAIL;}remove(b);bool existed=access(p,F_OK)==0;if(existed&&rename(p,b)!=0){remove(t);return ESP_FAIL;}if(rename(t,p)!=0){if(existed)rename(b,p);remove(t);return ESP_FAIL;}remove(b);return ESP_OK;}
-esp_err_t motion_profile_boot_load(const char*j,const char*b,motion_profile_t*x,bool*r){if(!j||!b||!x)return ESP_ERR_INVALID_ARG;uint8_t h[32];esp_err_t e=hash_file(j,h);if(e!=ESP_OK)return e;e=read_cache(b,h,x);if(e==ESP_OK){if(r)*r=false;return ESP_OK;}e=motion_profile_load_json(j,x);if(e!=ESP_OK)return e;e=write_cache(b,h,x);if(e==ESP_OK&&r)*r=true;return e;}
+#define SHA256_SIZE 32U
+#define PROFILE_PATH_BUFFER_SIZE 320U
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t payload_size;
+    uint8_t json_sha256[SHA256_SIZE];
+} cache_header_t;
+
+static esp_err_t hash_file(
+    const char *path,
+    uint8_t digest[SHA256_SIZE])
+{
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    const mbedtls_md_info_t *info = mbedtls_md_info_from_type(
+        MBEDTLS_MD_SHA256);
+    if (info == NULL) {
+        fclose(file);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    mbedtls_md_context_t context;
+    mbedtls_md_init(&context);
+
+    int result = mbedtls_md_setup(&context, info, 0);
+    if (result == 0) {
+        result = mbedtls_md_starts(&context);
+    }
+
+    uint8_t buffer[1024];
+    while (result == 0) {
+        const size_t length = fread(buffer, 1U, sizeof(buffer), file);
+        if (length > 0U) {
+            result = mbedtls_md_update(&context, buffer, length);
+        }
+        if (length < sizeof(buffer)) {
+            if (ferror(file)) {
+                result = -1;
+            }
+            break;
+        }
+    }
+
+    if (result == 0) {
+        result = mbedtls_md_finish(&context, digest);
+    }
+
+    mbedtls_md_free(&context);
+    fclose(file);
+    return result == 0 ? ESP_OK : ESP_FAIL;
+}
+
+static esp_err_t read_cache(
+    const char *path,
+    const uint8_t expected_hash[SHA256_SIZE],
+    motion_profile_t *profile)
+{
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    cache_header_t header;
+    bool valid =
+        fread(&header, 1U, sizeof(header), file) == sizeof(header) &&
+        header.magic == CACHE_MAGIC &&
+        header.version == CACHE_VERSION &&
+        header.payload_size == sizeof(*profile) &&
+        memcmp(header.json_sha256, expected_hash, SHA256_SIZE) == 0 &&
+        fread(profile, 1U, sizeof(*profile), file) == sizeof(*profile) &&
+        fgetc(file) == EOF;
+
+    fclose(file);
+    if (!valid) {
+        return ESP_ERR_INVALID_CRC;
+    }
+
+    return motion_profile_validate(profile, NULL, 0U);
+}
+
+static esp_err_t write_cache_atomic(
+    const char *path,
+    const uint8_t hash[SHA256_SIZE],
+    const motion_profile_t *profile)
+{
+    char temporary[PROFILE_PATH_BUFFER_SIZE];
+    char backup[PROFILE_PATH_BUFFER_SIZE];
+
+    if ((snprintf(temporary, sizeof(temporary), "%s.tmp", path) >=
+            (int)sizeof(temporary)) ||
+        (snprintf(backup, sizeof(backup), "%s.bak", path) >=
+            (int)sizeof(backup))) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    FILE *file = fopen(temporary, "wb");
+    if (file == NULL) {
+        return ESP_FAIL;
+    }
+
+    cache_header_t header = {
+        .magic = CACHE_MAGIC,
+        .version = CACHE_VERSION,
+        .payload_size = sizeof(*profile),
+    };
+    memcpy(header.json_sha256, hash, SHA256_SIZE);
+
+    bool success =
+        fwrite(&header, 1U, sizeof(header), file) == sizeof(header) &&
+        fwrite(profile, 1U, sizeof(*profile), file) == sizeof(*profile) &&
+        fflush(file) == 0 &&
+        fsync(fileno(file)) == 0;
+
+    const int close_result = fclose(file);
+    success = success && close_result == 0;
+    if (!success) {
+        (void)remove(temporary);
+        return ESP_FAIL;
+    }
+
+    const bool original_exists = access(path, F_OK) == 0;
+    (void)remove(backup);
+    if (original_exists && rename(path, backup) != 0) {
+        (void)remove(temporary);
+        return ESP_FAIL;
+    }
+
+    if (rename(temporary, path) != 0) {
+        if (original_exists) {
+            (void)rename(backup, path);
+        }
+        (void)remove(temporary);
+        return ESP_FAIL;
+    }
+
+    (void)remove(backup);
+    return ESP_OK;
+}
+
+esp_err_t motion_profile_boot_load(
+    const char *json_path,
+    const char *binary_path,
+    motion_profile_t *profile,
+    bool *rebuilt)
+{
+    if (json_path == NULL || binary_path == NULL || profile == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t hash[SHA256_SIZE];
+    esp_err_t error = hash_file(json_path, hash);
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    error = read_cache(binary_path, hash, profile);
+    if (error == ESP_OK) {
+        if (rebuilt != NULL) {
+            *rebuilt = false;
+        }
+        return ESP_OK;
+    }
+
+    error = motion_profile_load_json(json_path, profile);
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    error = write_cache_atomic(binary_path, hash, profile);
+    if (error == ESP_OK && rebuilt != NULL) {
+        *rebuilt = true;
+    }
+    return error;
+}

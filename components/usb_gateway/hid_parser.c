@@ -62,7 +62,7 @@ static int32_t read_signed(const uint8_t *data, uint8_t size)
 
 static hid_parser_result_t get_report_cursor(
 	hid_parser_context_t *context,
-	hid_report_type_t type,
+	gateway_hid_report_type_t type,
 	uint8_t report_id,
 	hid_parser_report_cursor_t **cursor,
 	hid_parser_report_t **report)
@@ -254,10 +254,10 @@ hid_parser_result_t hid_parser_parse_report(
 			} else if (item_tag == HID_MAIN_INPUT ||
 				item_tag == HID_MAIN_OUTPUT ||
 				item_tag == HID_MAIN_FEATURE) {
-				hid_report_type_t type =
-					(item_tag == HID_MAIN_INPUT) ? HID_REPORT_TYPE_INPUT :
-					(item_tag == HID_MAIN_OUTPUT) ? HID_REPORT_TYPE_OUTPUT :
-					HID_REPORT_TYPE_FEATURE;
+				gateway_hid_report_type_t type =
+					(item_tag == HID_MAIN_INPUT) ? GATEWAY_HID_REPORT_TYPE_INPUT :
+					(item_tag == HID_MAIN_OUTPUT) ? GATEWAY_HID_REPORT_TYPE_OUTPUT :
+					GATEWAY_HID_REPORT_TYPE_FEATURE;
 				hid_parser_report_cursor_t *cursor = NULL;
 				hid_parser_report_t *report = NULL;
 				uint64_t bit_count;

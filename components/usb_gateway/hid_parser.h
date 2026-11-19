@@ -16,10 +16,10 @@ extern "C" {
 #define HID_PARSER_LOCAL_USAGE_CAPACITY 64U
 
 typedef enum {
-	HID_REPORT_TYPE_INPUT = 0,
-	HID_REPORT_TYPE_OUTPUT,
-	HID_REPORT_TYPE_FEATURE
-} hid_report_type_t;
+	GATEWAY_HID_REPORT_TYPE_INPUT = 0,
+	GATEWAY_HID_REPORT_TYPE_OUTPUT,
+	GATEWAY_HID_REPORT_TYPE_FEATURE
+} gateway_hid_report_type_t;
 
 typedef enum {
 	HID_PARSER_OK = 0,
@@ -33,7 +33,7 @@ typedef enum {
 } hid_parser_result_t;
 
 typedef struct {
-	hid_report_type_t type;
+	gateway_hid_report_type_t type;
 	uint8_t report_id;
 	uint16_t payload_bits;
 	uint16_t payload_bytes;
@@ -41,7 +41,7 @@ typedef struct {
 } hid_parser_report_t;
 
 typedef struct {
-	hid_report_type_t type;
+	gateway_hid_report_type_t type;
 	uint8_t report_id;
 	uint16_t usage_page;
 	uint16_t usage;

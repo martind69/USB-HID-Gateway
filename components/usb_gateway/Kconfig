@@ -164,15 +164,19 @@ endmenu
 menu "SD card and verbose capture"
 config USB_GATEWAY_SDMMC_CLK_GPIO
     int "SDMMC CLK GPIO"
-    default -1
+    default 43
 config USB_GATEWAY_SDMMC_CMD_GPIO
     int "SDMMC CMD GPIO"
-    default -1
+    default 44
 config USB_GATEWAY_SDMMC_D0_GPIO
     int "SDMMC D0 GPIO"
-    default -1
+    default 39
+config USB_GATEWAY_SDMMC_CD_GPIO
+    int "SD card-detect GPIO"
+    default 41
 config USB_GATEWAY_SDMMC_FREQ_KHZ
-    int "SDMMC frequency kHz"
+    int "SDMMC clock frequency in kHz"
+    range 400 40000
     default 20000
 config USB_GATEWAY_SD_MAX_FILES
     int "Maximum open SD files"

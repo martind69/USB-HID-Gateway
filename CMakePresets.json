@@ -7,29 +7,29 @@
             "generator": "Ninja",
             "binaryDir": "build/default",
             "cacheVariables": {
+                "IDF_TARGET": "esp32p4",
                 "SDKCONFIG": "${sourceDir}/build/default/sdkconfig",
-                "IDF_TARGET": "esp32p4"
+                "SDKCONFIG_DEFAULTS": "${sourceDir}/sdkconfig.defaults"
             }
         },
         {
             "name": "verbose",
-            "displayName": "Primary ESP32-P4",
-            "generator": "Ninja",
+            "displayName": "Primary ESP32-P4 Verbose",
+            "inherits": "default",
             "binaryDir": "build/verbose",
             "cacheVariables": {
-                "IDF_TARGET": "esp32p4",
-                "SDKCONFIG": "build/verbose/sdkconfig",
-                "SDKCONFIG_DEFAULTS": "sdkconfig.defaults;sdkconfig.defaults.verbose"
+                "SDKCONFIG": "${sourceDir}/build/verbose/sdkconfig",
+                "SDKCONFIG_DEFAULTS": "${sourceDir}/sdkconfig.defaults;${sourceDir}/sdkconfig.defaults.verbose"
             }
-		},
+        },
         {
             "name": "production",
-            "displayName": "Primary ESP32-P4",
-            "generator": "Ninja",
+            "displayName": "Primary ESP32-P4 Production",
+            "inherits": "default",
             "binaryDir": "build/production",
             "cacheVariables": {
                 "SDKCONFIG": "${sourceDir}/build/production/sdkconfig",
-                "IDF_TARGET": "esp32p4"
+                "SDKCONFIG_DEFAULTS": "${sourceDir}/sdkconfig.defaults;${sourceDir}/sdkconfig.defaults.production"
             }
         }
     ]
