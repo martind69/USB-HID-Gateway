@@ -12,7 +12,6 @@
 #include <string.h>
 
 static const char *TAG = "spi_link";
-
 static p4_s3_frame_t s_next_tx;
 static uint32_t s_received;
 static uint32_t s_invalid;
@@ -79,7 +78,8 @@ static void prepare_status(
         1U);
 }
 
-static void prepare_response(const p4_s3_frame_t *received)
+static void prepare_response(
+    const p4_s3_frame_t *received)
 {
     if (s3_proxy_next_frame(&s_next_tx)) {
         return;
@@ -101,6 +101,13 @@ static void prepare_response(const p4_s3_frame_t *received)
 
     switch (received->raw[3]) {
         case P4_S3_MSG_NOP:
+            /*
+             * Do not overwrite the pending STATUS during a P4 poll.
+             * s_next_tx still contains the response prepared after the
+             * preceding command transaction.
+             */
+            break;
+
         case P4_S3_MSG_G815_IF0_INPUT:
         case P4_S3_MSG_G815_IF1_INPUT:
         case P4_S3_MSG_G815_ATTACH:

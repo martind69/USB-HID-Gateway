@@ -15,42 +15,6 @@ config USB_GATEWAY_ANALOG_I3C_FREQ_HZ
     int "Legacy-I2C rate"
     range 100000 1000000
     default 1000000
-config USB_GATEWAY_SHARED_SPI_SCLK_GPIO
-    int "Shared SPI SCLK GPIO"
-    default 6
-config USB_GATEWAY_SHARED_SPI_MOSI_GPIO
-    int "Shared SPI MOSI GPIO"
-    default 7
-config USB_GATEWAY_SHARED_SPI_MISO_GPIO
-    int "Shared SPI MISO GPIO"
-    default 8
-config USB_GATEWAY_S3_SPI_CS_GPIO
-    int "S3 CS GPIO"
-    default 36
-config USB_GATEWAY_SSD1306_ENABLE
-    bool "Enable SSD1306"
-    default y
-config USB_GATEWAY_SSD1306_CS_GPIO
-    int "SSD1306 CS GPIO"
-    default 37
-config USB_GATEWAY_SSD1306_DC_GPIO
-    int "SSD1306 D/C GPIO"
-    default 38
-config USB_GATEWAY_SSD1306_RESET_GPIO
-    int "SSD1306 RESET GPIO"
-    default 23
-config USB_GATEWAY_SSD1306_SPI_HZ
-    int "SSD1306 SPI clock"
-    range 1000000 10000000
-    default 10000000
-config USB_GATEWAY_SSD1306_CONTRAST
-    hex "SSD1306 contrast"
-    range 0x01 0xFF
-    default 0x7F
-config USB_GATEWAY_SSD1306_REFRESH_MS
-    int "SSD1306 refresh period ms"
-    range 50 2000
-    default 200
 config USB_GATEWAY_STATUS_LEDS_ENABLE
     bool "Enable status LEDs"
     default y
@@ -59,10 +23,10 @@ config USB_GATEWAY_STATUS_LED_BUSY_GPIO
     default 1
 config USB_GATEWAY_STATUS_LED_OK_GPIO
     int "Success LED GPIO"
-    default 4
+    default 2
 config USB_GATEWAY_STATUS_LED_ERROR_GPIO
     int "Error LED GPIO"
-    default 5
+    default 3
 config USB_GATEWAY_STATUS_LED_BUSY_ACTIVE_LOW
     bool "Busy LED active-low"
     default n
@@ -195,4 +159,56 @@ config USB_GATEWAY_S3_STATUS_POLL_LIMIT
     int "Maximum status polls per command"
     range 1 100
     default 10
+endmenu
+
+menu "P4 to S3 SPI2 bus"
+config USB_GATEWAY_S3_SPI_SCLK_GPIO
+    int "S3 SPI SCLK GPIO"
+    default 6
+config USB_GATEWAY_S3_SPI_MOSI_GPIO
+    int "S3 SPI MOSI GPIO"
+    default 7
+config USB_GATEWAY_S3_SPI_MISO_GPIO
+    int "S3 SPI MISO GPIO"
+    default 8
+config USB_GATEWAY_S3_SPI_CS_GPIO
+    int "S3 SPI chip-select GPIO"
+    default 22
+config USB_GATEWAY_S3_SPI_HZ
+    int "S3 SPI frequency"
+    range 1000000 20000000
+    default 10000000
+endmenu
+
+menu "SSD1306 SPI3 bus"
+config USB_GATEWAY_SSD1306_ENABLE
+    bool "Enable SSD1306 status display"
+    default y
+config USB_GATEWAY_SSD1306_SCLK_GPIO
+    int "SSD1306 SCLK GPIO"
+    default 20
+config USB_GATEWAY_SSD1306_MOSI_GPIO
+    int "SSD1306 MOSI GPIO"
+    default 21
+config USB_GATEWAY_SSD1306_CS_GPIO
+    int "SSD1306 chip-select GPIO"
+    default 37
+config USB_GATEWAY_SSD1306_DC_GPIO
+    int "SSD1306 D/C GPIO"
+    default 38
+config USB_GATEWAY_SSD1306_RESET_GPIO
+    int "SSD1306 reset GPIO"
+    default 23
+config USB_GATEWAY_SSD1306_SPI_HZ
+    int "SSD1306 SPI frequency"
+    range 1000000 10000000
+    default 10000000
+config USB_GATEWAY_SSD1306_CONTRAST
+    hex "SSD1306 contrast"
+    range 0x01 0xFF
+    default 0x7F
+config USB_GATEWAY_SSD1306_REFRESH_MS
+    int "SSD1306 refresh period ms"
+    range 50 2000
+    default 200
 endmenu

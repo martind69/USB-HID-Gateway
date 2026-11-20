@@ -32,20 +32,30 @@ idf_component_register(
         "radial_envelope.c"
         "shared_spi_bus.c"
         "ssd1306_display.c"
+        "ssd1306_font.c"
+        "ssd1306_status_renderer.c"
         "trajectory_generator.c"
         "usb_device.c"
         "usb_gateway.c"
         "usb_host.c"
         "usb_host_hid.c"
+        "usb_proxy_control.c"
         "usb_proxy_descriptor.c"
         "usb_proxy_transport.c"
         "verbose_capture.c"
-		"ssd1306_font.c"
-		"ssd1306_status_renderer.c"
-		"usb_proxy_control.c"
-		"sd_storage.c"
+        "sd_storage.c"
     INCLUDE_DIRS "." "include"
     REQUIRES
-        log freertos esp_timer esp_tinyusb usb usb_host_hid driver
-        esp_driver_i3c fatfs sdmmc mbedtls
+        log
+        freertos
+        esp_timer
+        esp_tinyusb
+        usb
+        usb_host_hid
+        driver
+        esp_driver_i3c
+        esp_hw_support
+        fatfs
+        sdmmc
+        mbedtls
 )
