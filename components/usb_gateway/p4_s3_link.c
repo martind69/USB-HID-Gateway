@@ -5,6 +5,7 @@
 #include "usb_proxy_control.h"
 
 #include "esp_log.h"
+#include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -15,7 +16,6 @@
 
 typedef struct {
     p4_s3_frame_t frame;
-    uint64_t queued_us;
 } queued_frame_t;
 
 static const char *TAG = "p4_s3_link";
@@ -39,6 +39,19 @@ static esp_err_t transfer(
     return spi_device_transmit(s_device, &transaction);
 }
 
+static void publish_acknowledgement(
+    const p4_s3_ack_t *acknowledgement)
+{
+    if (xQueueSend(s_ack_queue, acknowledgement, 0U) == pdPASS) {
+        return;
+    }
+
+    /* Keep the most recent STATUS if the consumer was delayed. */
+    p4_s3_ack_t discarded;
+    (void)xQueueReceive(s_ack_queue, &discarded, 0U);
+    (void)xQueueSend(s_ack_queue, acknowledgement, 0U);
+}
+
 static void handle_inbound(
     const p4_s3_frame_t *frame,
     uint8_t expected_sequence,
@@ -58,6 +71,11 @@ static void handle_inbound(
         return;
     }
 
+    if (frame->raw[3] == P4_S3_MSG_NOP) {
+        /* A valid idle frame is expected before the delayed STATUS. */
+        return;
+    }
+
     if (frame->raw[3] == P4_S3_MSG_STATUS) {
         if (frame->raw[4] != expected_sequence) {
             gateway_link_metrics_on_sequence_error();
@@ -72,7 +90,7 @@ static void handle_inbound(
         };
 
         gateway_link_metrics_on_rx(acknowledgement.round_trip_us);
-        (void)xQueueSend(s_ack_queue, &acknowledgement, 0U);
+        publish_acknowledgement(&acknowledgement);
         *acknowledged = true;
         return;
     }
@@ -115,9 +133,7 @@ bool p4_s3_link_enqueue(
         return false;
     }
 
-    queued_frame_t queued = {
-        .queued_us = (uint64_t)esp_timer_get_time(),
-    };
+    queued_frame_t queued = { 0 };
     p4_s3_frame_build(
         &queued.frame,
         type,
@@ -134,11 +150,52 @@ bool p4_s3_link_enqueue(
     return true;
 }
 
+static void synchronize_link(const p4_s3_frame_t *nop_frame)
+{
+    /*
+     * Drain a STATUS frame that may have remained prepared on the S3 after a
+     * previous P4 reset or test. The S3 changes its response to NOP after it
+     * receives the first NOP. A second/third transaction confirms idle state.
+     * Synchronization traffic is intentionally excluded from link metrics.
+     */
+    for (unsigned attempt = 0U; attempt < 3U; ++attempt) {
+        p4_s3_frame_t received = { 0 };
+        const esp_err_t error = transfer(nop_frame, &received);
+        if (error != ESP_OK) {
+            ESP_LOGW(
+                TAG,
+                "Startup synchronization transfer %u failed: %s",
+                attempt + 1U,
+                esp_err_to_name(error));
+        }
+        esp_rom_delay_us(CONFIG_USB_GATEWAY_S3_REARM_GUARD_US);
+    }
+
+    p4_s3_ack_t stale_acknowledgement;
+    while (xQueueReceive(
+               s_ack_queue,
+               &stale_acknowledgement,
+               0U) == pdPASS) {
+        /* Drain stale acknowledgements before accepting application traffic. */
+    }
+
+    ESP_LOGI(TAG, "P4/S3 startup synchronization complete");
+}
+
 static void link_task(void *argument)
 {
     (void)argument;
     queued_frame_t queued;
     p4_s3_frame_t nop_frame;
+
+    p4_s3_frame_build(
+        &nop_frame,
+        P4_S3_MSG_NOP,
+        0U,
+        NULL,
+        0U);
+
+    synchronize_link(&nop_frame);
 
     for (;;) {
         if (xQueueReceive(
@@ -164,13 +221,6 @@ static void link_task(void *argument)
             queued.frame.raw[4],
             started_us,
             &acknowledged);
-
-        p4_s3_frame_build(
-            &nop_frame,
-            P4_S3_MSG_NOP,
-            0U,
-            NULL,
-            0U);
 
         for (unsigned poll = 0U;
              !acknowledged &&
@@ -200,6 +250,14 @@ static void link_task(void *argument)
         if (!acknowledged) {
             gateway_link_metrics_on_timeout();
         }
+
+        /*
+         * The ESP32-S3 slave prepares its next transaction only after
+         * spi_slave_transmit() returns and the received frame was handled.
+         * Without this guard, the P4 can start the next command while the S3
+         * still exposes the previous STATUS frame or is not armed yet.
+         */
+        esp_rom_delay_us(CONFIG_USB_GATEWAY_S3_REARM_GUARD_US);
     }
 }
 

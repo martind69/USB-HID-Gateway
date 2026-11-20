@@ -6,8 +6,13 @@
 #include "profile_feedback.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+#define SELF_TEST_ACK_TIMEOUT_MS 50U
+#define SELF_TEST_ENQUEUE_TIMEOUT_MS 100U
+#define SELF_TEST_RETRY_DELAY_MS 1U
 
 static const char *TAG = "gateway_self_test";
 static gateway_self_test_status_t s_status;
@@ -39,6 +44,27 @@ static void log_results(void)
         (unsigned long)metrics.latency_max_us);
 }
 
+static bool enqueue_with_backpressure(
+    const uint8_t *payload,
+    size_t payload_length)
+{
+    const int64_t deadline_us = esp_timer_get_time() +
+        (int64_t)SELF_TEST_ENQUEUE_TIMEOUT_MS * 1000LL;
+
+    do {
+        if (p4_s3_link_enqueue(
+                P4_S3_MSG_G815_IF1_INPUT,
+                payload,
+                payload_length)) {
+            return true;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(SELF_TEST_RETRY_DELAY_MS));
+    } while (esp_timer_get_time() < deadline_us);
+
+    return false;
+}
+
 static void test_task(void *argument)
 {
     (void)argument;
@@ -57,19 +83,16 @@ static void test_task(void *argument)
                 (uint8_t)(frame_index + payload_index);
         }
 
-        if (!p4_s3_link_enqueue(
-                P4_S3_MSG_G815_IF1_INPUT,
-                payload,
-                sizeof(payload))) {
+        if (!enqueue_with_backpressure(payload, sizeof(payload))) {
             ++s_status.failed_frames;
-            s_status.last_error = ESP_ERR_NO_MEM;
+            s_status.last_error = ESP_ERR_TIMEOUT;
             continue;
         }
 
         p4_s3_ack_t acknowledgement;
         if (!p4_s3_link_wait_status(
                 &acknowledgement,
-                30U)) {
+                SELF_TEST_ACK_TIMEOUT_MS)) {
             ++s_status.failed_frames;
             s_status.last_error = ESP_ERR_TIMEOUT;
         } else if (acknowledgement.status != 0U) {

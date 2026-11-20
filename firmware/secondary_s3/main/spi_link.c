@@ -102,10 +102,15 @@ static void prepare_response(
     switch (received->raw[3]) {
         case P4_S3_MSG_NOP:
             /*
-             * Do not overwrite the pending STATUS during a P4 poll.
-             * s_next_tx still contains the response prepared after the
-             * preceding command transaction.
-             */
+            * The pending STATUS was transmitted during this NOP transaction.
+            * Prepare an idle frame for the next transaction.
+            */
+            p4_s3_frame_build(
+                &s_next_tx,
+                P4_S3_MSG_NOP,
+                0U,
+                NULL,
+                0U);
             break;
 
         case P4_S3_MSG_G815_IF0_INPUT:

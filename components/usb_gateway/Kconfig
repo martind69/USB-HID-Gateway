@@ -178,6 +178,14 @@ config USB_GATEWAY_S3_SPI_HZ
     int "S3 SPI frequency"
     range 1000000 20000000
     default 10000000
+config USB_GATEWAY_S3_REARM_GUARD_US
+    int "S3 SPI slave re-arm guard time in microseconds"
+    range 50 5000
+    default 500
+    help
+        Delay after a completed or timed-out command before starting the next
+        SPI transaction. This gives the ESP32-S3 slave task time to process the
+        received frame and queue the next 72-byte transaction.
 endmenu
 
 menu "SSD1306 SPI3 bus"
