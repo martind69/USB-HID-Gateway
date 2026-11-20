@@ -44,6 +44,9 @@ idf_component_register(
         "usb_proxy_transport.c"
         "verbose_capture.c"
         "sd_storage.c"
+        "keyboard_test_pattern.c"
+        "de_de_keyboard_layout.c"
+        "g815_capture.c"
     INCLUDE_DIRS "." "include"
     REQUIRES
         log
@@ -57,5 +60,4 @@ idf_component_register(
         esp_hw_support
         fatfs
         sdmmc
-        mbedtls
 )

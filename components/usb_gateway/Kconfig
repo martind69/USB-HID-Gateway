@@ -220,3 +220,37 @@ config USB_GATEWAY_SSD1306_REFRESH_MS
     range 50 2000
     default 200
 endmenu
+
+menu "Keyboard end-to-end test pattern"
+
+config USB_GATEWAY_KEYBOARD_TEST_ENABLE
+    bool "Build keyboard test-pattern runner"
+    default y
+
+config USB_GATEWAY_KEYBOARD_TEST_BOOT_ENABLE
+    bool "Run keyboard test pattern automatically at boot"
+    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
+    default n
+    help
+        Dangerous on a normal workstation. The runner sends real keyboard
+        input after the configured countdown. Enable only for a dedicated test.
+
+config USB_GATEWAY_KEYBOARD_TEST_COUNTDOWN_S
+    int "Countdown before keyboard input"
+    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
+    range 3 30
+    default 5
+
+config USB_GATEWAY_KEYBOARD_TEST_DOWN_MS
+    int "Default key-down time in milliseconds"
+    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
+    range 2 1000
+    default 20
+
+config USB_GATEWAY_KEYBOARD_TEST_UP_MS
+    int "Default key-release time in milliseconds"
+    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
+    range 2 1000
+    default 20
+
+endmenu
