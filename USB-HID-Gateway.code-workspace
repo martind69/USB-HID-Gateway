@@ -1,0 +1,15 @@
+{
+    "folders": [
+        {
+            "name": "Primary Gateway P4",
+            "path": "."
+        },
+        {
+            "name": "Secondary G815 S3",
+            "path": "firmware/secondary_s3"
+        }
+    ],
+    "settings": {
+        "idf.saveScope": "workspaceFolder"
+    }
+}

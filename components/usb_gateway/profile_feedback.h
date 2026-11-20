@@ -1,0 +1,3 @@
+#pragma once
+#include "esp_err.h"
+typedef enum{PROFILE_FEEDBACK_READY,PROFILE_FEEDBACK_LEARNING,PROFILE_FEEDBACK_EXPORT_PENDING,PROFILE_FEEDBACK_EXPORT_WRITING,PROFILE_FEEDBACK_EXPORT_SUCCESS,PROFILE_FEEDBACK_EXPORT_ERROR,PROFILE_FEEDBACK_ANALOG_ERROR}profile_feedback_state_t;esp_err_t profile_feedback_init(void);void profile_feedback_set(profile_feedback_state_t state);
