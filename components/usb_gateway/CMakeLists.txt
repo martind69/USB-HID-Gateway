@@ -60,4 +60,5 @@ idf_component_register(
         esp_hw_support
         fatfs
         sdmmc
+        mbedtls
 )
