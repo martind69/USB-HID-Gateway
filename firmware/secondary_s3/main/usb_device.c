@@ -1,7 +1,8 @@
 #include "usb_device.h"
 
+#include "g815_report_router.h"
+#include "g815_usb_descriptors.h"
 #include "keyboard_report_queue.h"
-
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -9,16 +10,12 @@
 #include "tinyusb_default_config.h"
 #include "tusb.h"
 
-#include <string.h>
-
-#define USB_VID 0x303AU
-#define USB_PID 0x4001U
-#define USB_BCD 0x0100U
-#define USB_HID_INTERFACE 0U
-#define USB_HID_ENDPOINT 0x81U
-#define USB_HID_EP_SIZE 8U
-#define USB_CONFIG_TOTAL_LENGTH \
-    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
+#define G815_CONFIGURATION_TOTAL_LENGTH \
+    (TUD_CONFIG_DESC_LEN + (2U * TUD_HID_DESC_LEN))
+#define G815_IF0_ENDPOINT 0x81U
+#define G815_IF1_ENDPOINT 0x82U
+#define G815_IF0_PACKET_SIZE 8U
+#define G815_IF1_PACKET_SIZE 64U
 
 static const char *TAG = "s3_usb_device";
 static uint32_t s_reports_sent;
@@ -32,71 +29,106 @@ static const tusb_desc_device_t s_device_descriptor = {
     .bDeviceSubClass = 0x00,
     .bDeviceProtocol = 0x00,
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor = USB_VID,
-    .idProduct = USB_PID,
-    .bcdDevice = USB_BCD,
+    .idVendor = G815_USB_VID,
+    .idProduct = G815_USB_PID,
+    .bcdDevice = G815_USB_BCD_DEVICE,
     .iManufacturer = 0x01,
     .iProduct = 0x02,
     .iSerialNumber = 0x03,
     .bNumConfigurations = 0x01,
 };
 
-static const uint8_t s_hid_report_descriptor[] = {
-    TUD_HID_REPORT_DESC_KEYBOARD()
-};
-
 static const uint8_t s_configuration_descriptor[] = {
     TUD_CONFIG_DESCRIPTOR(
         1,
-        1,
+        2,
         0,
-        USB_CONFIG_TOTAL_LENGTH,
+        G815_CONFIGURATION_TOTAL_LENGTH,
         TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP,
-        100),
+        500),
     TUD_HID_DESCRIPTOR(
-        USB_HID_INTERFACE,
+        G815_INTERFACE_BOOT_KEYBOARD,
         0,
         HID_ITF_PROTOCOL_KEYBOARD,
-        sizeof(s_hid_report_descriptor),
-        USB_HID_ENDPOINT,
-        USB_HID_EP_SIZE,
+        sizeof(g815_hid_report_descriptor_if0),
+        G815_IF0_ENDPOINT,
+        G815_IF0_PACKET_SIZE,
+        1),
+    TUD_HID_DESCRIPTOR(
+        G815_INTERFACE_EXTENDED_HID,
+        0,
+        HID_ITF_PROTOCOL_NONE,
+        sizeof(g815_hid_report_descriptor_if1),
+        G815_IF1_ENDPOINT,
+        G815_IF1_PACKET_SIZE,
         1),
 };
 
 static const char *s_string_descriptors[] = {
     (const char[]) { 0x09, 0x04 },
-    "USB HID Gateway",
-    "S3 Test Keyboard",
-    "S3-0001",
+    "Logitech",
+    "G815 RGB Mechanical Gaming Keyboard",
+    "G815-PROXY-S3",
 };
 
-static void keyboard_task(void *argument)
+static bool send_report(const s3_hid_report_t *report)
+{
+    if (report->interface_number == G815_INTERFACE_BOOT_KEYBOARD) {
+        return tud_hid_n_report(
+            G815_INTERFACE_BOOT_KEYBOARD,
+            0U,
+            report->data,
+            report->length);
+    }
+
+    if (report->interface_number == G815_INTERFACE_EXTENDED_HID &&
+        report->length >= 1U) {
+        return tud_hid_n_report(
+            G815_INTERFACE_EXTENDED_HID,
+            report->data[0],
+            report->data + 1U,
+            report->length - 1U);
+    }
+
+    return false;
+}
+
+static void hid_report_task(void *argument)
 {
     (void)argument;
-    s3_keyboard_report_t report;
+    s3_hid_report_t report;
 
-    for (;;) {
+    while (true) {
         if (!keyboard_report_queue_receive(&report, 100U)) {
             continue;
         }
 
-        while (!tud_mounted()) {
-            vTaskDelay(pdMS_TO_TICKS(10U));
+        bool sent = false;
+        for (uint32_t wait_ms = 0U; wait_ms < 1000U; ++wait_ms) {
+            if (!tud_mounted()) {
+                vTaskDelay(pdMS_TO_TICKS(1U));
+                continue;
+            }
+            if (!tud_hid_n_ready(report.interface_number)) {
+                vTaskDelay(pdMS_TO_TICKS(1U));
+                continue;
+            }
+            sent = send_report(&report);
+            break;
         }
 
-        while (!tud_hid_n_ready(0U)) {
-            vTaskDelay(pdMS_TO_TICKS(1U));
-        }
-
-        if (tud_hid_n_report(
-                0U,
-                0U,
-                report.data,
-                sizeof(report.data))) {
+        if (sent) {
             ++s_reports_sent;
         } else {
             ++s_reports_failed;
-            ESP_LOGW(TAG, "TinyUSB rejected keyboard report");
+            ESP_LOGW(
+                TAG,
+                "HID report failed: interface=%u length=%u report_id=0x%02X",
+                report.interface_number,
+                report.length,
+                report.interface_number == G815_INTERFACE_EXTENDED_HID
+                    ? report.data[0]
+                    : 0U);
         }
     }
 }
@@ -114,24 +146,19 @@ esp_err_t usb_device_init(void)
     config.descriptor.qualifier = NULL;
     config.descriptor.string = s_string_descriptors;
     config.descriptor.string_count =
-        (int)(sizeof(s_string_descriptors) /
-            sizeof(s_string_descriptors[0]));
-    config.descriptor.full_speed_config =
-        s_configuration_descriptor;
+        (int)(sizeof(s_string_descriptors) / sizeof(s_string_descriptors[0]));
+    config.descriptor.full_speed_config = s_configuration_descriptor;
     config.descriptor.high_speed_config = NULL;
 
     error = tinyusb_driver_install(&config);
     if (error != ESP_OK) {
-        ESP_LOGE(
-            TAG,
-            "TinyUSB install failed: %s",
-            esp_err_to_name(error));
+        ESP_LOGE(TAG, "TinyUSB install failed: %s", esp_err_to_name(error));
         return error;
     }
 
     if (xTaskCreate(
-            keyboard_task,
-            "s3_hid_keyboard",
+            hid_report_task,
+            "s3_g815_hid",
             4096U,
             NULL,
             12U,
@@ -141,23 +168,62 @@ esp_err_t usb_device_init(void)
 
     ESP_LOGI(
         TAG,
-        "TinyUSB boot keyboard installed: VID=%04X PID=%04X EP=0x%02X",
-        USB_VID,
-        USB_PID,
-        USB_HID_ENDPOINT);
+        "G815 TinyUSB device installed: VID=%04X PID=%04X IF0=0x81 IF1=0x82",
+        G815_USB_VID,
+        G815_USB_PID);
     return ESP_OK;
 }
 
-bool usb_device_keyboard_enqueue(
+esp_err_t usb_device_report_enqueue(
+    uint8_t interface_number,
     const uint8_t *report,
     size_t length)
 {
-    return keyboard_report_queue_enqueue(report, length);
+    const esp_err_t validation = g815_report_validate(
+        interface_number,
+        report,
+        length);
+    if (validation != ESP_OK) {
+        return validation;
+    }
+    return keyboard_report_queue_enqueue(interface_number, report, length);
+}
+
+void usb_device_release_all(void)
+{
+    static const uint8_t keyboard_release[G815_BOOT_INPUT_LENGTH] = { 0 };
+    static const uint8_t extended_release[G815_EXTENDED_KEYBOARD_LENGTH] = {
+        G815_REPORT_ID_EXTENDED_KEYBOARD
+    };
+    static const uint8_t consumer_release[G815_CONSUMER_LENGTH] = {
+        G815_REPORT_ID_CONSUMER, 0U
+    };
+
+    keyboard_report_queue_clear();
+    (void)keyboard_report_queue_enqueue(
+        G815_INTERFACE_BOOT_KEYBOARD,
+        keyboard_release,
+        sizeof(keyboard_release));
+    (void)keyboard_report_queue_enqueue(
+        G815_INTERFACE_EXTENDED_HID,
+        extended_release,
+        sizeof(extended_release));
+    (void)keyboard_report_queue_enqueue(
+        G815_INTERFACE_EXTENDED_HID,
+        consumer_release,
+        sizeof(consumer_release));
 }
 
 bool usb_device_mounted(void)
 {
     return tud_mounted();
+}
+
+bool usb_device_interface_ready(uint8_t interface_number)
+{
+    return interface_number < 2U &&
+        tud_mounted() &&
+        tud_hid_n_ready(interface_number);
 }
 
 uint32_t usb_device_reports_sent(void)
@@ -172,42 +238,11 @@ uint32_t usb_device_reports_failed(void)
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
 {
-    (void)instance;
-    return s_hid_report_descriptor;
-}
-
-uint16_t tud_hid_get_report_cb(
-    uint8_t instance,
-    uint8_t report_id,
-    hid_report_type_t report_type,
-    uint8_t *buffer,
-    uint16_t requested_length)
-{
-    (void)instance;
-    (void)report_id;
-    (void)report_type;
-
-    if (buffer == NULL || requested_length == 0U) {
-        return 0U;
+    if (instance == G815_INTERFACE_BOOT_KEYBOARD) {
+        return g815_hid_report_descriptor_if0;
     }
-
-    const uint16_t length = requested_length < S3_KEYBOARD_REPORT_SIZE
-        ? requested_length
-        : S3_KEYBOARD_REPORT_SIZE;
-    memset(buffer, 0, length);
-    return length;
-}
-
-void tud_hid_set_report_cb(
-    uint8_t instance,
-    uint8_t report_id,
-    hid_report_type_t report_type,
-    uint8_t const *buffer,
-    uint16_t buffer_size)
-{
-    (void)instance;
-    (void)report_id;
-    (void)report_type;
-    (void)buffer;
-    (void)buffer_size;
+    if (instance == G815_INTERFACE_EXTENDED_HID) {
+        return g815_hid_report_descriptor_if1;
+    }
+    return NULL;
 }

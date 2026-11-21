@@ -1,3 +1,4 @@
+
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -10,3 +11,4 @@ esp_err_t s3_proxy_send_get_report(uint8_t instance,uint8_t report_id,uint8_t re
 bool s3_proxy_next_frame(p4_s3_frame_t *frame);
 esp_err_t s3_proxy_accept_response(const p4_s3_frame_t *frame);
 size_t s3_proxy_copy_get_response(uint8_t tag,uint8_t *buffer,size_t capacity,uint32_t timeout_ms);
+

@@ -8,6 +8,7 @@
 
 #include "diagnostics.h"
 #include "g815_capture.h"
+#include "usb_host_control_bridge.h"
 #include "esp_bit_defs.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -133,26 +134,26 @@ static void usb_host_client_event_callback(
 static void start_g815_capture(
     const usb_host_device_slot_t *slot,
     const usb_device_info_t *info,
-    const usb_device_desc_t *device_descriptor,
-    const usb_config_desc_t *configuration_descriptor)
+    const usb_device_desc_t *device_desc,
+    const usb_config_desc_t *config_desc)
 {
     if (slot == NULL ||
         info == NULL ||
-        device_descriptor == NULL ||
-        configuration_descriptor == NULL ||
-        device_descriptor->idVendor != G815_VENDOR_ID ||
-        device_descriptor->idProduct != G815_PRODUCT_ID ||
+        device_desc == NULL ||
+        config_desc == NULL ||
+        device_desc->idVendor != G815_VENDOR_ID ||
+        device_desc->idProduct != G815_PRODUCT_ID ||
         g815_capture_is_active()) {
         return;
     }
 
     const g815_capture_device_info_t capture_info = {
-        .vendor_id = device_descriptor->idVendor,
-        .product_id = device_descriptor->idProduct,
-        .bcd_device = device_descriptor->bcdDevice,
+        .vendor_id = device_desc->idVendor,
+        .product_id = device_desc->idProduct,
+        .bcd_device = device_desc->bcdDevice,
         .address = slot->address,
         .configuration_value = info->bConfigurationValue,
-        .interface_count = configuration_descriptor->bNumInterfaces,
+        .interface_count = config_desc->bNumInterfaces,
     };
 
     esp_err_t error = g815_capture_start(&capture_info);
@@ -167,8 +168,8 @@ static void start_g815_capture(
     s_capture_address = slot->address;
 
     error = g815_capture_write_device_descriptor(
-        (const uint8_t *)device_descriptor,
-        sizeof(*device_descriptor));
+        (const uint8_t *)device_desc,
+        sizeof(*device_desc));
     if (error != ESP_OK) {
         ESP_LOGW(
             TAG,
@@ -177,8 +178,8 @@ static void start_g815_capture(
     }
 
     error = g815_capture_write_configuration_descriptor(
-        (const uint8_t *)configuration_descriptor,
-        configuration_descriptor->wTotalLength);
+        (const uint8_t *)config_desc,
+        config_desc->wTotalLength);
     if (error != ESP_OK) {
         ESP_LOGW(
             TAG,
@@ -190,15 +191,15 @@ static void start_g815_capture(
         TAG,
         "G815 capture started: addr=%u VID=%04X PID=%04X",
         slot->address,
-        device_descriptor->idVendor,
-        device_descriptor->idProduct);
+        device_desc->idVendor,
+        device_desc->idProduct);
 }
 
 static void usb_host_open_device(usb_host_device_slot_t *slot)
 {
     usb_device_info_t info = { 0 };
-    const usb_device_desc_t *device_descriptor = NULL;
-    const usb_config_desc_t *configuration_descriptor = NULL;
+    const usb_device_desc_t *device_desc = NULL;
+    const usb_config_desc_t *config_desc = NULL;
     diagnostics_host_device_t diagnostic_device = { 0 };
 
     esp_err_t result = usb_host_device_open(
@@ -226,10 +227,8 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
         goto error_close;
     }
 
-    result = usb_host_get_device_descriptor(
-        slot->handle,
-        &device_descriptor);
-    if (result != ESP_OK || device_descriptor == NULL) {
+    result = usb_host_get_device_descriptor(slot->handle, &device_desc);
+    if (result != ESP_OK || device_desc == NULL) {
         ESP_LOGE(
             TAG,
             "Cannot read device descriptor at address %u: %s",
@@ -243,26 +242,25 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
         "USB device addr=%u VID=%04X PID=%04X speed=%s "
         "EP0_MPS=%u bcdUSB=0x%04X configuration=%u",
         (unsigned)slot->address,
-        (unsigned)device_descriptor->idVendor,
-        (unsigned)device_descriptor->idProduct,
+        (unsigned)device_desc->idVendor,
+        (unsigned)device_desc->idProduct,
         info.speed == USB_SPEED_HIGH ? "HS" :
             info.speed == USB_SPEED_FULL ? "FS" : "LS",
-        (unsigned)device_descriptor->bMaxPacketSize0,
-        (unsigned)device_descriptor->bcdUSB,
+        (unsigned)device_desc->bMaxPacketSize0,
+        (unsigned)device_desc->bcdUSB,
         (unsigned)info.bConfigurationValue);
 
     result = usb_host_get_active_config_descriptor(
         slot->handle,
-        &configuration_descriptor);
-    if (result == ESP_OK && configuration_descriptor != NULL) {
+        &config_desc);
+    if (result == ESP_OK && config_desc != NULL) {
         ESP_LOGI(
             TAG,
             "USB configuration addr=%u interfaces=%u attributes=0x%02X",
             (unsigned)slot->address,
-            (unsigned)configuration_descriptor->bNumInterfaces,
-            (unsigned)configuration_descriptor->bmAttributes);
-        diagnostic_device.interface_count =
-            configuration_descriptor->bNumInterfaces;
+            (unsigned)config_desc->bNumInterfaces,
+            (unsigned)config_desc->bmAttributes);
+        diagnostic_device.interface_count = config_desc->bNumInterfaces;
     } else {
         ESP_LOGW(
             TAG,
@@ -273,15 +271,17 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
 
     diagnostic_device.present = true;
     diagnostic_device.address = slot->address;
-    diagnostic_device.vid = device_descriptor->idVendor;
-    diagnostic_device.pid = device_descriptor->idProduct;
+    diagnostic_device.vid = device_desc->idVendor;
+    diagnostic_device.pid = device_desc->idProduct;
     diagnostics_host_device_added(&diagnostic_device);
 
-    start_g815_capture(
-        slot,
-        &info,
-        device_descriptor,
-        configuration_descriptor);
+    usb_host_control_bridge_attach(
+        slot->handle,
+        slot->address,
+        device_desc->idVendor,
+        device_desc->idProduct);
+
+    start_g815_capture(slot, &info, device_desc, config_desc);
     return;
 
 error_close:
@@ -319,6 +319,7 @@ static void stop_g815_capture(uint8_t address)
 static void usb_host_close_device(usb_host_device_slot_t *slot)
 {
     if (slot->opened && slot->handle != NULL) {
+        usb_host_control_bridge_detach(slot->address);
         stop_g815_capture(slot->address);
         diagnostics_host_device_removed(slot->address);
 
@@ -383,6 +384,14 @@ static void usb_host_client_task(void *argument)
         diagnostics_set_host_state(DIAG_STATE_ERROR, result);
         vTaskDelete(NULL);
         return;
+    }
+
+    result = usb_host_control_bridge_init(s_client_handle);
+    if (result != ESP_OK) {
+        ESP_LOGE(
+            TAG,
+            "G815 control bridge initialization failed: %s",
+            esp_err_to_name(result));
     }
 
     ESP_LOGI(TAG, "USB Host client registered; waiting for devices");

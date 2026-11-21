@@ -1,3 +1,4 @@
+
 idf_component_register(
     SRCS
         "ads7128.c"
@@ -38,15 +39,13 @@ idf_component_register(
         "usb_device.c"
         "usb_gateway.c"
         "usb_host.c"
+        "usb_host_control_bridge.c"
         "usb_host_hid.c"
         "usb_proxy_control.c"
         "usb_proxy_descriptor.c"
         "usb_proxy_transport.c"
         "verbose_capture.c"
         "sd_storage.c"
-        "keyboard_test_pattern.c"
-        "de_de_keyboard_layout.c"
-        "g815_capture.c"
     INCLUDE_DIRS "." "include"
     REQUIRES
         log
@@ -62,3 +61,4 @@ idf_component_register(
         sdmmc
         mbedtls
 )
+

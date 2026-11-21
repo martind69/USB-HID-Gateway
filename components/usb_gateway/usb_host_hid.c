@@ -4,7 +4,10 @@
 
 #include "diagnostics.h"
 #include "g815_capture.h"
+#include "g815_forwarder.h"
 #include "hid_proxy.h"
+#include "p4_s3_link.h"
+#include "p4_s3_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -39,18 +42,22 @@ typedef struct {
 } hid_open_request_t;
 
 static const char *TAG = "usb_host_hid";
-static usb_host_hid_interface_t
-    s_interfaces[USB_HOST_HID_MAX_INTERFACES];
+static usb_host_hid_interface_t s_interfaces[USB_HOST_HID_MAX_INTERFACES];
 static QueueHandle_t s_open_queue;
 static uint8_t s_next_interface_id = 1U;
 static size_t s_interface_count;
 
+static bool is_g815(const usb_host_hid_interface_t *interface)
+{
+    return interface != NULL &&
+        interface->device_info.VID == G815_VENDOR_ID &&
+        interface->device_info.PID == G815_PRODUCT_ID;
+}
+
 static usb_host_hid_interface_t *find_interface(
     hid_host_device_handle_t handle)
 {
-    for (size_t index = 0U;
-         index < USB_HOST_HID_MAX_INTERFACES;
-         ++index) {
+    for (size_t index = 0U; index < USB_HOST_HID_MAX_INTERFACES; ++index) {
         if (s_interfaces[index].active &&
             s_interfaces[index].handle == handle) {
             return &s_interfaces[index];
@@ -62,9 +69,7 @@ static usb_host_hid_interface_t *find_interface(
 static usb_host_hid_interface_t *allocate_interface(
     hid_host_device_handle_t handle)
 {
-    for (size_t index = 0U;
-         index < USB_HOST_HID_MAX_INTERFACES;
-         ++index) {
+    for (size_t index = 0U; index < USB_HOST_HID_MAX_INTERFACES; ++index) {
         if (!s_interfaces[index].active) {
             usb_host_hid_interface_t *interface = &s_interfaces[index];
             memset(interface, 0, sizeof(*interface));
@@ -88,21 +93,80 @@ static void release_interface(usb_host_hid_interface_t *interface)
         return;
     }
 
+    if (is_g815(interface) && interface->params.iface_num == 0U) {
+        (void)p4_s3_link_enqueue(P4_S3_MSG_G815_DETACH, NULL, 0U);
+    }
     (void)hid_proxy_enqueue_interface_removed(interface->interface_id);
 
     if (interface->opened) {
         const esp_err_t error = hid_host_device_close(interface->handle);
         if (error != ESP_OK) {
-            ESP_LOGW(
-                TAG,
-                "HID interface close failed: %s",
-                esp_err_to_name(error));
+            ESP_LOGW(TAG, "HID interface close failed: %s", esp_err_to_name(error));
         }
     }
 
     memset(interface, 0, sizeof(*interface));
     if (s_interface_count > 0U) {
         --s_interface_count;
+    }
+}
+
+static void handle_input_report(usb_host_hid_interface_t *interface)
+{
+    uint8_t report[USB_HOST_HID_REPORT_BUFFER_SIZE];
+    size_t report_length = 0U;
+    const esp_err_t error = hid_host_device_get_raw_input_report_data(
+        interface->handle,
+        report,
+        sizeof(report),
+        &report_length);
+
+    if (error != ESP_OK) {
+        diagnostics_report_hid_error(error);
+        ESP_LOGW(TAG, "Cannot copy HID input report: %s", esp_err_to_name(error));
+        return;
+    }
+    if (report_length == 0U) {
+        return;
+    }
+
+    if (g815_capture_is_active() && is_g815(interface)) {
+        (void)g815_capture_event(
+            G815_CAPTURE_EVENT_INPUT_REPORT,
+            interface->params.iface_num,
+            interface->params.iface_num == 1U ? report[0] : 0U,
+            0U,
+            report,
+            report_length,
+            ESP_OK);
+    }
+
+    if (is_g815(interface)) {
+        if (g815_forwarder_submit(
+                interface->params.iface_num,
+                report,
+                report_length)) {
+            diagnostics_report_proxy_forwarded();
+        } else {
+            diagnostics_report_proxy_error(ESP_ERR_NO_MEM);
+            ESP_LOGW(
+                TAG,
+                "G815 forwarding rejected: iface=%u length=%u",
+                interface->params.iface_num,
+                (unsigned)report_length);
+        }
+        return;
+    }
+
+    if (!hid_proxy_enqueue_raw_report(
+            interface->interface_id,
+            report,
+            report_length)) {
+        ESP_LOGW(
+            TAG,
+            "Raw report queue full: interface=%u length=%u",
+            interface->interface_id,
+            (unsigned)report_length);
     }
 }
 
@@ -119,60 +183,22 @@ static void hid_host_interface_event_callback(
     }
 
     switch (event) {
-        case HID_HOST_INTERFACE_EVENT_INPUT_REPORT: {
-            uint8_t report[USB_HOST_HID_REPORT_BUFFER_SIZE];
-            size_t report_length = 0U;
-            const esp_err_t error =
-                hid_host_device_get_raw_input_report_data(
-                    handle,
-                    report,
-                    sizeof(report),
-                    &report_length);
-
-            if (error == ESP_OK && report_length > 0U) {
-                if (g815_capture_is_active() &&
-                    interface->device_info.VID == G815_VENDOR_ID &&
-                    interface->device_info.PID == G815_PRODUCT_ID) {
-                    (void)g815_capture_event(
-                        G815_CAPTURE_EVENT_INPUT_REPORT,
-                        interface->params.iface_num,
-                        report[0],
-                        0U,
-                        report,
-                        report_length,
-                        ESP_OK);
-                }
-
-                if (!hid_proxy_enqueue_raw_report(
-                        interface->interface_id,
-                        report,
-                        report_length)) {
-                    ESP_LOGW(
-                        TAG,
-                        "Raw report queue full; interface=%u length=%u",
-                        interface->interface_id,
-                        (unsigned)report_length);
-                }
-            } else if (error != ESP_OK) {
-                ESP_LOGW(
-                    TAG,
-                    "Cannot copy HID input report: %s",
-                    esp_err_to_name(error));
-            }
+        case HID_HOST_INTERFACE_EVENT_INPUT_REPORT:
+            handle_input_report(interface);
             break;
-        }
 
         case HID_HOST_INTERFACE_EVENT_TRANSFER_ERROR:
+            diagnostics_report_hid_error(ESP_FAIL);
             ESP_LOGW(
                 TAG,
-                "HID input transfer error; interface=%u",
+                "HID input transfer error: interface=%u",
                 interface->interface_id);
             break;
 
         case HID_HOST_INTERFACE_EVENT_DISCONNECTED:
             ESP_LOGI(
                 TAG,
-                "HID interface disconnected; interface=%u",
+                "HID interface disconnected: interface=%u",
                 interface->interface_id);
             release_interface(interface);
             break;
@@ -182,8 +208,7 @@ static void hid_host_interface_event_callback(
     }
 }
 
-static esp_err_t open_interface_once(
-    usb_host_hid_interface_t *interface)
+static esp_err_t open_interface_once(usb_host_hid_interface_t *interface)
 {
     const hid_host_device_config_t config = {
         .callback = hid_host_interface_event_callback,
@@ -196,14 +221,9 @@ static esp_err_t open_interface_once(
     }
     interface->opened = true;
 
-    error = hid_host_get_device_info(
-        interface->handle,
-        &interface->device_info);
+    error = hid_host_get_device_info(interface->handle, &interface->device_info);
     if (error != ESP_OK) {
-        ESP_LOGW(
-            TAG,
-            "Cannot read HID device information: %s",
-            esp_err_to_name(error));
+        return error;
     }
 
     size_t descriptor_length = 0U;
@@ -217,17 +237,12 @@ static esp_err_t open_interface_once(
         return ESP_ERR_INVALID_SIZE;
     }
 
-    memcpy(
-        interface->report_descriptor,
-        descriptor,
-        descriptor_length);
+    memcpy(interface->report_descriptor, descriptor, descriptor_length);
     interface->report_descriptor_length = descriptor_length;
-
-    const hid_parser_result_t parser_result = hid_parser_parse_report(
+    interface->descriptor_parsed = hid_parser_parse_report(
         &interface->parser,
         descriptor,
-        descriptor_length);
-    interface->descriptor_parsed = parser_result == HID_PARSER_OK;
+        descriptor_length) == HID_PARSER_OK;
 
     if (interface->parser.top_level_usage_page == 0U &&
         interface->params.sub_class == 1U) {
@@ -244,14 +259,11 @@ static esp_err_t open_interface_once(
         0U,
         (uint16_t)descriptor_length);
 
-    if (g815_capture_is_active() &&
-        interface->device_info.VID == G815_VENDOR_ID &&
-        interface->device_info.PID == G815_PRODUCT_ID) {
-        const esp_err_t capture_error =
-            g815_capture_write_report_descriptor(
-                interface->params.iface_num,
-                descriptor,
-                descriptor_length);
+    if (g815_capture_is_active() && is_g815(interface)) {
+        const esp_err_t capture_error = g815_capture_write_report_descriptor(
+            interface->params.iface_num,
+            descriptor,
+            descriptor_length);
         if (capture_error != ESP_OK) {
             ESP_LOGW(
                 TAG,
@@ -261,15 +273,12 @@ static esp_err_t open_interface_once(
         }
     }
 
-    ESP_LOGI(
-        TAG,
-        "HID report descriptor ready: addr=%u iface=%u length=%u parsed=%u",
-        interface->params.addr,
-        interface->params.iface_num,
-        (unsigned)descriptor_length,
-        interface->descriptor_parsed);
-
-    return hid_host_device_start(interface->handle);
+    error = hid_host_device_start(interface->handle);
+    if (error == ESP_OK && is_g815(interface) &&
+        interface->params.iface_num == 0U) {
+        (void)p4_s3_link_enqueue(P4_S3_MSG_G815_ATTACH, NULL, 0U);
+    }
+    return error;
 }
 
 static void hid_open_worker(void *argument)
@@ -278,10 +287,7 @@ static void hid_open_worker(void *argument)
     hid_open_request_t request;
 
     while (true) {
-        if (xQueueReceive(
-                s_open_queue,
-                &request,
-                portMAX_DELAY) != pdPASS) {
+        if (xQueueReceive(s_open_queue, &request, portMAX_DELAY) != pdPASS) {
             continue;
         }
 
@@ -306,8 +312,7 @@ static void hid_open_worker(void *argument)
 
             ESP_LOGW(
                 TAG,
-                "HID open/descriptor retry: addr=%u iface=%u "
-                "attempt=%u error=%s",
+                "HID open retry: addr=%u iface=%u attempt=%u error=%s",
                 interface->params.addr,
                 interface->params.iface_num,
                 attempt,
@@ -317,45 +322,23 @@ static void hid_open_worker(void *argument)
                 (void)hid_host_device_close(interface->handle);
                 interface->opened = false;
             }
-
             vTaskDelay(pdMS_TO_TICKS(USB_HOST_HID_OPEN_RETRY_MS));
         }
 
         if (error != ESP_OK) {
-            ESP_LOGE(
-                TAG,
-                "HID interface failed: addr=%u iface=%u error=%s",
-                interface->params.addr,
-                interface->params.iface_num,
-                esp_err_to_name(error));
-
-            if (g815_capture_is_active()) {
-                (void)g815_capture_event(
-                    G815_CAPTURE_EVENT_ERROR,
-                    interface->params.iface_num,
-                    0U,
-                    0U,
-                    NULL,
-                    0U,
-                    error);
-            }
-
+            diagnostics_report_hid_error(error);
             release_interface(interface);
             continue;
         }
 
         ESP_LOGI(
             TAG,
-            "HID interface open: id=%u addr=%u iface=%u "
-            "VID=%04X PID=%04X subclass=%u protocol=%u "
-            "descriptor=%u parsed=%u",
+            "HID open: id=%u addr=%u iface=%u VID=%04X PID=%04X desc=%u parsed=%u",
             interface->interface_id,
             interface->params.addr,
             interface->params.iface_num,
             interface->device_info.VID,
             interface->device_info.PID,
-            interface->params.sub_class,
-            interface->params.proto,
             (unsigned)interface->report_descriptor_length,
             interface->descriptor_parsed);
     }
@@ -367,7 +350,6 @@ static void hid_host_driver_event_callback(
     void *argument)
 {
     (void)argument;
-
     if (event != HID_HOST_DRIVER_EVENT_CONNECTED ||
         find_interface(handle) != NULL) {
         return;
@@ -383,22 +365,14 @@ static void hid_host_driver_event_callback(
         handle,
         &interface->params);
     if (error != ESP_OK) {
-        ESP_LOGE(
-            TAG,
-            "Cannot read HID interface parameters: %s",
-            esp_err_to_name(error));
         release_interface(interface);
         return;
     }
 
-    const hid_open_request_t request = {
-        .interface = interface,
-    };
+    const hid_open_request_t request = { .interface = interface };
     interface->open_queued = true;
-
     if (xQueueSend(s_open_queue, &request, 0U) != pdPASS) {
         interface->open_queued = false;
-        ESP_LOGE(TAG, "HID descriptor queue full");
         release_interface(interface);
     }
 }
@@ -408,6 +382,7 @@ esp_err_t usb_host_hid_init(void)
     memset(s_interfaces, 0, sizeof(s_interfaces));
     s_next_interface_id = 1U;
     s_interface_count = 0U;
+    g815_forwarder_init();
 
     s_open_queue = xQueueCreate(
         USB_HOST_HID_OPEN_QUEUE_DEPTH,
@@ -434,7 +409,6 @@ esp_err_t usb_host_hid_init(void)
         .callback = hid_host_driver_event_callback,
         .callback_arg = NULL,
     };
-
     return hid_host_install(&config);
 }
 
@@ -451,12 +425,9 @@ bool usb_host_hid_get_interface_info(
         return false;
     }
 
-    for (size_t index = 0U;
-         index < USB_HOST_HID_MAX_INTERFACES;
-         ++index) {
+    for (size_t index = 0U; index < USB_HOST_HID_MAX_INTERFACES; ++index) {
         const usb_host_hid_interface_t *interface = &s_interfaces[index];
-        if (interface->active &&
-            interface->interface_id == interface_id) {
+        if (interface->active && interface->interface_id == interface_id) {
             *info = (usb_host_hid_interface_info_t) {
                 .interface_id = interface->interface_id,
                 .device_address = interface->params.addr,
@@ -466,14 +437,12 @@ bool usb_host_hid_get_interface_info(
                 .vendor_id = interface->device_info.VID,
                 .product_id = interface->device_info.PID,
                 .descriptor_parsed = interface->descriptor_parsed,
-                .report_descriptor_length =
-                    interface->report_descriptor_length,
+                .report_descriptor_length = interface->report_descriptor_length,
                 .report_descriptor = interface->report_descriptor,
                 .parser_context = &interface->parser,
             };
             return true;
         }
     }
-
     return false;
 }
