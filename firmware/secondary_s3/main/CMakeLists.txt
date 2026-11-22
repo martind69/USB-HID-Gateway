@@ -9,9 +9,14 @@ idf_component_register(
         "g815_usb_descriptors.c"
         "g815_report_router.c"
         "g815_tinyusb_callbacks.c"
-    INCLUDE_DIRS "."
+        "s3_ota_receiver.c"
+    INCLUDE_DIRS
+        "."
     REQUIRES
         esp_tinyusb
         driver
         esp_timer
+        app_update
+        esp_partition
+    WHOLE_ARCHIVE
 )

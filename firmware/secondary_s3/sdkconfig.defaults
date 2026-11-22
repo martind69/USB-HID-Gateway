@@ -36,3 +36,11 @@ CONFIG_SECONDARY_S3_SPI_CS_GPIO=10
 CONFIG_SECONDARY_S3_LINK_IRQ_GPIO=9
 
 CONFIG_SECONDARY_S3_KEYBOARD_QUEUE_DEPTH=32
+
+# =============================================================================
+# Application: OTA Functions
+# =============================================================================
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_ota.csv"
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=n

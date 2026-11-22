@@ -1,3 +1,4 @@
+
 menu "USB HID Gateway"
 config USB_GATEWAY_ADS7128_ENABLE
     bool "Enable ADS7128"
@@ -252,5 +253,37 @@ config USB_GATEWAY_KEYBOARD_TEST_UP_MS
     depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
     range 2 1000
     default 20
+
+endmenu
+
+menu "Secondary S3 SPI OTA"
+
+config USB_GATEWAY_S3_OTA_ENABLE
+    bool "Enable S3 application update over the P4/S3 SPI link"
+    default y
+    help
+        Checks for a trigger file on the SD card after the P4/S3 link starts.
+        Only the S3 application image is updated. The S3 bootloader and
+        partition table remain unchanged.
+
+config USB_GATEWAY_S3_OTA_IMAGE_PATH
+    string "S3 application image path"
+    depends on USB_GATEWAY_S3_OTA_ENABLE
+    default "/sdcard/firmware/secondary_s3.bin"
+
+config USB_GATEWAY_S3_OTA_VERSION_PATH
+    string "S3 image version text path"
+    depends on USB_GATEWAY_S3_OTA_ENABLE
+    default "/sdcard/firmware/secondary_s3.version"
+
+config USB_GATEWAY_S3_OTA_TRIGGER_PATH
+    string "S3 OTA trigger path"
+    depends on USB_GATEWAY_S3_OTA_ENABLE
+    default "/sdcard/firmware/secondary_s3.update"
+
+config USB_GATEWAY_S3_OTA_DONE_PATH
+    string "Completed S3 OTA marker path"
+    depends on USB_GATEWAY_S3_OTA_ENABLE
+    default "/sdcard/firmware/secondary_s3.done"
 
 endmenu

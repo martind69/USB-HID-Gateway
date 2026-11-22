@@ -118,3 +118,12 @@ CONFIG_USB_GATEWAY_KEYBOARD_TEST_BOOT_ENABLE=n
 CONFIG_USB_GATEWAY_KEYBOARD_TEST_COUNTDOWN_S=5
 CONFIG_USB_GATEWAY_KEYBOARD_TEST_DOWN_MS=20
 CONFIG_USB_GATEWAY_KEYBOARD_TEST_UP_MS=20
+
+# =============================================================================
+# Application: OTA Functions
+# =============================================================================
+CONFIG_USB_GATEWAY_S3_OTA_ENABLE=y
+CONFIG_USB_GATEWAY_S3_OTA_IMAGE_PATH="/sdcard/firmware/secondary_s3.bin"
+CONFIG_USB_GATEWAY_S3_OTA_VERSION_PATH="/sdcard/firmware/secondary_s3.version"
+CONFIG_USB_GATEWAY_S3_OTA_TRIGGER_PATH="/sdcard/firmware/secondary_s3.update"
+CONFIG_USB_GATEWAY_S3_OTA_DONE_PATH="/sdcard/firmware/secondary_s3.done"

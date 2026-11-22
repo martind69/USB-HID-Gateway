@@ -11,8 +11,8 @@ typedef struct {
     uint8_t sequence;
     uint8_t status;
     uint32_t round_trip_us;
-    bool telemetry_valid;
-    p4_s3_status_payload_t telemetry;
+    uint8_t payload_length;
+    uint8_t payload[P4_S3_PAYLOAD_SIZE];
 } p4_s3_ack_t;
 
 esp_err_t p4_s3_link_init(void);
@@ -24,4 +24,12 @@ bool p4_s3_link_enqueue(
 bool p4_s3_link_wait_status(
     p4_s3_ack_t *acknowledgement,
     uint32_t timeout_ms);
+esp_err_t p4_s3_link_command(
+    uint8_t type,
+    const uint8_t *payload,
+    size_t length,
+    p4_s3_ack_t *acknowledgement,
+    uint32_t timeout_ms);
+esp_err_t p4_s3_link_begin_exclusive(void);
+void p4_s3_link_end_exclusive(void);
 uint32_t p4_s3_link_dropped(void);

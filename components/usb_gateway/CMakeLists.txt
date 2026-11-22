@@ -1,4 +1,3 @@
-
 idf_component_register(
     SRCS
         "ads7128.c"
@@ -9,7 +8,9 @@ idf_component_register(
         "center_calibration.c"
         "continuous_motion_learner.c"
         "dac7578.c"
+        "de_de_keyboard_layout.c"
         "diagnostics.c"
+        "g815_capture.c"
         "g815_forwarder.c"
         "gateway_self_test.c"
         "gateway_test_metrics.c"
@@ -19,6 +20,7 @@ idf_component_register(
         "hid_semantic.c"
         "hotkey.c"
         "human_motion_model.c"
+        "keyboard_test_pattern.c"
         "kinematic_estimator.c"
         "learned_motion_model.c"
         "mapping.c"
@@ -31,6 +33,8 @@ idf_component_register(
         "profile_export.c"
         "profile_feedback.c"
         "radial_envelope.c"
+        "s3_ota_manager.c"
+        "sd_storage.c"
         "shared_spi_bus.c"
         "ssd1306_display.c"
         "ssd1306_font.c"
@@ -45,8 +49,9 @@ idf_component_register(
         "usb_proxy_descriptor.c"
         "usb_proxy_transport.c"
         "verbose_capture.c"
-        "sd_storage.c"
-    INCLUDE_DIRS "." "include"
+    INCLUDE_DIRS
+        "."
+        "include"
     REQUIRES
         log
         freertos
@@ -61,4 +66,3 @@ idf_component_register(
         sdmmc
         mbedtls
 )
-

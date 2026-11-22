@@ -1,3 +1,4 @@
+
 #include "usb_gateway.h"
 
 #include "analog_control_gpio.h"
@@ -15,6 +16,7 @@
 #include "profile_export.h"
 #include "profile_feedback.h"
 #include "sd_storage.h"
+#include "s3_ota_manager.h"
 #include "ssd1306_display.h"
 #include "usb_device.h"
 #include "usb_host.h"
@@ -55,6 +57,91 @@ static const char *TAG = "usb_gateway";
 static analog_vector_io_t s_analog;
 static motion_profile_t s_profile;
 static bool s_profile_valid;
+static void update_display(const char *detail, bool analog_ok);
+
+static bool s_last_analog_ok;
+static TaskHandle_t s_ota_restore_task;
+
+static void restore_display_after_ota(void *argument)
+{
+    (void)argument;
+    vTaskDelay(pdMS_TO_TICKS(5000U));
+    update_display("READY", s_last_analog_ok);
+    s_ota_restore_task = NULL;
+    vTaskDelete(NULL);
+}
+
+static void update_s3_ota_display(const s3_ota_progress_t *progress)
+{
+    if (progress == NULL) {
+        return;
+    }
+
+    ssd1306_status_view_t view = { 0 };
+    (void)snprintf(view.mode, sizeof(view.mode), "S3 SPI OTA");
+    (void)snprintf(
+        view.profile,
+        sizeof(view.profile),
+        "%s",
+        progress->version[0] != '\0' ? progress->version : "S3 UPDATE");
+
+    switch (progress->phase) {
+        case P4_S3_OTA_PHASE_IDLE:
+            (void)snprintf(view.detail, sizeof(view.detail), "CHECK IMAGE");
+            break;
+        case P4_S3_OTA_PHASE_ABORTED:
+            (void)snprintf(view.detail, sizeof(view.detail), "CLEANUP");
+            break;
+        case P4_S3_OTA_PHASE_ERASING:
+            (void)snprintf(view.detail, sizeof(view.detail), "ERASE");
+            break;
+        case P4_S3_OTA_PHASE_WRITING:
+            (void)snprintf(
+                view.detail,
+                sizeof(view.detail),
+                "%lu/%lu kB",
+                (unsigned long)(progress->bytes_written / 1024U),
+                (unsigned long)(progress->image_size / 1024U));
+            break;
+        case P4_S3_OTA_PHASE_VERIFYING:
+            (void)snprintf(view.detail, sizeof(view.detail), "VERIFY SHA256");
+            break;
+        case P4_S3_OTA_PHASE_REBOOT_PENDING:
+            (void)snprintf(view.detail, sizeof(view.detail), "WAIT S3 REBOOT");
+            break;
+        case P4_S3_OTA_PHASE_PENDING_CONFIRM:
+            (void)snprintf(view.detail, sizeof(view.detail), "CONFIRM IMAGE");
+            break;
+        case P4_S3_OTA_PHASE_CONFIRMED:
+            (void)snprintf(view.detail, sizeof(view.detail), "OTA COMPLETE");
+            break;
+        case P4_S3_OTA_PHASE_FAILED:
+        default:
+            (void)snprintf(
+                view.detail,
+                sizeof(view.detail),
+                "OTA ERR 0x%lX",
+                (unsigned long)progress->error);
+            break;
+    }
+
+    view.progress_percent = progress->progress_percent;
+    view.usb_host_ok = true;
+    view.usb_device_ok = true;
+    view.analog_ok = s_last_analog_ok;
+    ssd1306_display_set_view(&view);
+
+    if (progress->phase == P4_S3_OTA_PHASE_CONFIRMED &&
+        s_ota_restore_task == NULL) {
+        (void)xTaskCreate(
+            restore_display_after_ota,
+            "ota_display_restore",
+            2048U,
+            NULL,
+            4U,
+            &s_ota_restore_task);
+    }
+}
 
 static void update_display(const char *detail, bool analog_ok)
 {
@@ -92,6 +179,8 @@ static void initialize_software_state(void)
     hotkey_init();
     (void)gateway_self_test_init();
     (void)keyboard_test_pattern_init();
+    (void)s3_ota_manager_init();
+    s3_ota_manager_set_progress_callback(update_s3_ota_display);
     (void)g815_capture_init();
     usb_proxy_control_init();
     (void)usb_proxy_transport_init();
@@ -284,6 +373,7 @@ void usb_gateway_init(void)
     initialize_storage();
 
     const bool analog_ok = initialize_analog();
+    s_last_analog_ok = analog_ok;
     initialize_profile();
 
     if (!initialize_mapping()) {
@@ -298,12 +388,25 @@ void usb_gateway_init(void)
     diagnostics_set_proxy_state(DIAG_STATE_READY, ESP_OK);
     update_display("READY", analog_ok);
 
+    if (link_ready && sd_storage_is_mounted()) {
+        const esp_err_t ota_error = s3_ota_manager_start_if_requested();
+        if (ota_error != ESP_OK &&
+            ota_error != ESP_ERR_NOT_FOUND &&
+            ota_error != ESP_ERR_NOT_SUPPORTED) {
+            ESP_LOGE(TAG, "S3 SPI OTA start failed: %s", esp_err_to_name(ota_error));
+        }
+    }
+
     /*
      * Capture startup is intentionally performed by usb_host.c once the real
      * device and configuration descriptors are available. This file only
      * initializes the capture backend.
      */
-    start_configured_test(link_ready);
+    if (!s3_ota_manager_running()) {
+        start_configured_test(link_ready);
+    } else {
+        ESP_LOGW(TAG, "Boot tests suppressed while S3 SPI OTA is active");
+    }
 }
 
 void usb_gateway_process(void)
@@ -327,3 +430,4 @@ usb_gateway_mode_t usb_gateway_get_mode(void)
 {
     return hotkey_get_mode();
 }
+
