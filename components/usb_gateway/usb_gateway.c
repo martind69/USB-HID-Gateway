@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "analog_bus.h"
 #include "analog_control_gpio.h"
 #include "analog_engine.h"
 #include "analog_vector_io.h"
@@ -12,6 +13,7 @@
 #include "gateway_paths.h"
 #include "gpio_output.h"
 #include "hotkey.h"
+#include "json_memory.h"
 #include "motion_profile_cache.h"
 #include "motion_profile_defaults.h"
 #include "output_config.h"
@@ -31,8 +33,16 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
+
+/*
+ * Profile load/create runs in a temporary task: the JSON parser keeps a
+ * complete motion_profile_t (about 4.4 x 10^4 bytes) on its stack.
+ */
+#define PROFILE_TASK_STACK      (64U * 1024U)
+#define PROFILE_TASK_PRIORITY   5U
 
 static const char *TAG = "usb_gateway";
 
@@ -43,6 +53,7 @@ static bool s_profile_valid;
 static bool s_last_analog_ok;
 static output_config_t s_output_config;
 static TaskHandle_t s_ota_restore_task;
+static SemaphoreHandle_t s_profile_done;
 
 #if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
 static int64_t s_last_status_us;
@@ -152,6 +163,8 @@ static void update_display(const char *detail, bool analog_ok)
 
 static void initialize_software_state(void)
 {
+    /* First: every later JSON parser/serializer uses these hooks. */
+    (void)json_memory_init();
     diagnostics_init();
     (void)profile_feedback_init();
     hotkey_init();
@@ -212,6 +225,9 @@ static bool initialize_analog(void)
         ESP_LOGE(TAG, "Digital output initialization failed: %s",
             esp_err_to_name(error));
     }
+#if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
+    analog_bus_scan();
+#endif
     error = analog_vector_io_init(&s_analog);
     s_analog_available = error == ESP_OK;
     const bool analog_ok = error == ESP_OK || error == ESP_ERR_NOT_SUPPORTED;
@@ -222,12 +238,8 @@ static bool initialize_analog(void)
     return analog_ok;
 }
 
-static void initialize_profile(void)
+static void load_profile(void)
 {
-    s_profile_valid = false;
-    if (!sd_storage_is_mounted()) {
-        return;
-    }
     bool cache_rebuilt = false;
     esp_err_t error = motion_profile_boot_load(
         GATEWAY_PROFILE_JSON_FILE,
@@ -253,12 +265,41 @@ static void initialize_profile(void)
     s_profile_valid = true;
     ESP_LOGI(TAG, "Profile loaded: %.64s, cache_rebuilt=%s",
         s_profile.name, cache_rebuilt ? "yes" : "no");
-    const esp_err_t export_error = profile_export_init(
-        &s_profile,
-        GATEWAY_PROFILE_JSON_FILE);
-    if (export_error != ESP_OK) {
-        ESP_LOGW(TAG, "Profile export initialization failed: %s",
-            esp_err_to_name(export_error));
+}
+
+static void profile_task(void *argument)
+{
+    (void)argument;
+    load_profile();
+    xSemaphoreGive(s_profile_done);
+    vTaskDelete(NULL);
+}
+
+static void initialize_profile(void)
+{
+    s_profile_valid = false;
+    if (!sd_storage_is_mounted()) {
+        return;
+    }
+    s_profile_done = xSemaphoreCreateBinary();
+    if (s_profile_done == NULL ||
+        xTaskCreate(profile_task, "profile_load", PROFILE_TASK_STACK, NULL,
+            PROFILE_TASK_PRIORITY, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Cannot start profile load task");
+        return;
+    }
+    (void)xSemaphoreTake(s_profile_done, portMAX_DELAY);
+    vSemaphoreDelete(s_profile_done);
+    s_profile_done = NULL;
+
+    if (s_profile_valid) {
+        const esp_err_t export_error = profile_export_init(
+            &s_profile,
+            GATEWAY_PROFILE_JSON_FILE);
+        if (export_error != ESP_OK) {
+            ESP_LOGW(TAG, "Profile export initialization failed: %s",
+                esp_err_to_name(export_error));
+        }
     }
 }
 

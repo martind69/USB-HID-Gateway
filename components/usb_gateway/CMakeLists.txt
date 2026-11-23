@@ -1,9 +1,9 @@
 idf_component_register(
     SRCS
         "ads7128.c"
+        "analog_bus.c"
         "analog_control_gpio.c"
         "analog_engine.c"
-        "analog_i3c_bus.c"
         "analog_mapping.c"
         "analog_vector_io.c"
         "capture_log.c"
@@ -17,6 +17,7 @@ idf_component_register(
         "hotkey.c"
         "human_motion_model.c"
         "input_state.c"
+        "json_memory.c"
         "kinematic_estimator.c"
         "learned_motion_model.c"
         "link_metrics.c"
@@ -58,8 +59,9 @@ idf_component_register(
         usb
         usb_host_hid
         driver
-        esp_driver_i3c
+        esp_driver_i2c
         esp_hw_support
+        heap
         fatfs
         sdmmc
         mbedtls

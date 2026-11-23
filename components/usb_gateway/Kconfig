@@ -5,14 +5,14 @@ config USB_GATEWAY_ADS7128_ENABLE
 config USB_GATEWAY_DAC7578_ENABLE
     bool "Enable DAC7578"
     default y
-config USB_GATEWAY_ANALOG_I3C_SDA
-    int "I3C SDA GPIO"
+config USB_GATEWAY_ANALOG_I2C_SDA
+    int "Analog I2C SDA GPIO"
     default 32
-config USB_GATEWAY_ANALOG_I3C_SCL
-    int "I3C SCL GPIO"
+config USB_GATEWAY_ANALOG_I2C_SCL
+    int "Analog I2C SCL GPIO"
     default 33
-config USB_GATEWAY_ANALOG_I3C_FREQ_HZ
-    int "Legacy-I2C rate"
+config USB_GATEWAY_ANALOG_I2C_FREQ_HZ
+    int "Analog I2C clock in Hz"
     range 100000 1000000
     default 1000000
 config USB_GATEWAY_STATUS_LEDS_ENABLE
@@ -61,8 +61,8 @@ config USB_GATEWAY_CAPTURE_ENABLE
     default n
     help
         Master switch. Enables the periodic diagnostic report (system, USB,
-        proxy, P4/S3 link, I2C) on the console. Event messages such as device
-        attach/detach and errors are always logged.
+        proxy, P4/S3 link, I2C) and the analog bus scan at boot. Event
+        messages such as device attach/detach and errors are always logged.
 config USB_GATEWAY_CAPTURE_DIAG_PERIOD_S
     int "Diagnostic report period in seconds"
     depends on USB_GATEWAY_CAPTURE_ENABLE

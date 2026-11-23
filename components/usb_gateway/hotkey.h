@@ -1,7 +1,21 @@
 #pragma once
-#include <stdbool.h>
-#include <stdint.h>
+
 #include "usb_gateway.h"
-void hotkey_init(void);void hotkey_process(void);void hotkey_set_mode(usb_gateway_mode_t mode);usb_gateway_mode_t hotkey_get_mode(void);
-bool hotkey_handle_keyboard_event(uint8_t modifiers,uint8_t usage,bool pressed);
-void hotkey_handle_mode_key(bool pressed);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * Gateway mode (PASS / PROXY). The mode hotkey is configured in output.json
+ * and evaluated by analog_engine; the profile export key by profile_export.
+ */
+
+void hotkey_init(void);
+void hotkey_process(void);
+void hotkey_set_mode(usb_gateway_mode_t mode);
+usb_gateway_mode_t hotkey_get_mode(void);
+
+#ifdef __cplusplus
+}
+#endif
