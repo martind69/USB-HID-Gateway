@@ -54,7 +54,6 @@ static bool s_last_analog_ok;
 static output_config_t s_output_config;
 static TaskHandle_t s_ota_restore_task;
 static SemaphoreHandle_t s_profile_done;
-
 #if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
 static int64_t s_last_status_us;
 #endif
@@ -75,13 +74,16 @@ static void update_s3_ota_display(const s3_ota_progress_t *progress)
     if (progress == NULL) {
         return;
     }
+
     ssd1306_status_view_t view = { 0 };
-    (void)snprintf(view.mode, sizeof(view.mode), "S3 SPI OTA");
+    (void)snprintf(view.mode, sizeof(view.mode), "S3 OTA");
+    (void)snprintf(view.info_label, sizeof(view.info_label), "VERSION");
     (void)snprintf(
-        view.profile,
-        sizeof(view.profile),
-        "%s",
-        progress->version[0] != '\0' ? progress->version : "S3 UPDATE");
+        view.info,
+        sizeof(view.info),
+        "%.16s",
+        progress->version[0] != '\0' ? progress->version : "UNKNOWN");
+
     switch (progress->phase) {
         case P4_S3_OTA_PHASE_IDLE:
             (void)snprintf(view.detail, sizeof(view.detail), "CHECK IMAGE");
@@ -90,42 +92,40 @@ static void update_s3_ota_display(const s3_ota_progress_t *progress)
             (void)snprintf(view.detail, sizeof(view.detail), "CLEANUP");
             break;
         case P4_S3_OTA_PHASE_ERASING:
-            (void)snprintf(view.detail, sizeof(view.detail), "ERASE");
+            (void)snprintf(view.detail, sizeof(view.detail), "ERASING");
             break;
         case P4_S3_OTA_PHASE_WRITING:
-            (void)snprintf(
-                view.detail,
-                sizeof(view.detail),
-                "%lu/%lu kB",
-                (unsigned long)(progress->bytes_written / 1024U),
-                (unsigned long)(progress->image_size / 1024U));
+            (void)snprintf(view.detail, sizeof(view.detail), "WRITING");
             break;
         case P4_S3_OTA_PHASE_VERIFYING:
             (void)snprintf(view.detail, sizeof(view.detail), "VERIFY SHA256");
             break;
         case P4_S3_OTA_PHASE_REBOOT_PENDING:
-            (void)snprintf(view.detail, sizeof(view.detail), "WAIT S3 REBOOT");
+            (void)snprintf(view.detail, sizeof(view.detail), "WAIT REBOOT");
             break;
         case P4_S3_OTA_PHASE_PENDING_CONFIRM:
-            (void)snprintf(view.detail, sizeof(view.detail), "CONFIRM IMAGE");
+            (void)snprintf(view.detail, sizeof(view.detail), "CONFIRM");
             break;
         case P4_S3_OTA_PHASE_CONFIRMED:
-            (void)snprintf(view.detail, sizeof(view.detail), "OTA COMPLETE");
+            (void)snprintf(view.detail, sizeof(view.detail), "COMPLETE");
             break;
         case P4_S3_OTA_PHASE_FAILED:
         default:
             (void)snprintf(
                 view.detail,
                 sizeof(view.detail),
-                "OTA ERR 0x%lX",
+                "ERR 0x%lX",
                 (unsigned long)progress->error);
             break;
     }
+
     view.progress_percent = progress->progress_percent;
+    view.show_progress = true;
     view.usb_host_ok = true;
     view.usb_device_ok = true;
     view.analog_ok = s_last_analog_ok;
     ssd1306_display_set_view(&view);
+
     if (progress->phase == P4_S3_OTA_PHASE_CONFIRMED &&
         s_ota_restore_task == NULL) {
         (void)xTaskCreate(
@@ -144,16 +144,21 @@ static void update_display(const char *detail, bool analog_ok)
     const char *mode = hotkey_get_mode() == USB_GATEWAY_MODE_PROXY
         ? "PROXY"
         : "PASS";
-    const char *profile_name = s_profile_valid
-        ? s_profile.name
-        : "NO PROFILE";
+    const char *profile_name = "NONE";
+
+    if (s_profile_valid) {
+        profile_name = s_profile.name[0] != '\0' ? s_profile.name : "UNNAMED";
+    }
+
     (void)snprintf(view.mode, sizeof(view.mode), "%.11s", mode);
-    (void)snprintf(view.profile, sizeof(view.profile), "%.16s", profile_name);
+    (void)snprintf(view.info_label, sizeof(view.info_label), "PROFILE");
+    (void)snprintf(view.info, sizeof(view.info), "%.16s", profile_name);
     (void)snprintf(
         view.detail,
         sizeof(view.detail),
         "%.21s",
         detail != NULL ? detail : "");
+    view.show_progress = false;
     /* TODO(DISPLAY-HEALTH): replace provisional USB states with live diagnostics. */
     view.usb_host_ok = true;
     view.usb_device_ok = true;
@@ -171,6 +176,7 @@ static void initialize_software_state(void)
     (void)s3_ota_manager_init();
     s3_ota_manager_set_progress_callback(update_s3_ota_display);
     (void)usb_capture_init();
+
     esp_err_t error = usb_proxy_control_init();
     if (error != ESP_OK) {
         ESP_LOGE(TAG, "USB proxy control initialization failed: %s",
@@ -188,6 +194,7 @@ static void initialize_storage(void)
     if (mount_error != ESP_OK) {
         ESP_LOGW(TAG, "SD unavailable: %s", esp_err_to_name(mount_error));
     }
+
     const esp_err_t capture_error = capture_log_init();
     if (capture_error != ESP_OK && capture_error != ESP_ERR_NOT_SUPPORTED) {
         ESP_LOGW(TAG, "SD event log initialization failed: %s",
@@ -198,16 +205,19 @@ static void initialize_storage(void)
 static void initialize_configuration(void)
 {
     output_config_set_defaults(&s_output_config);
+
     if (!sd_storage_is_mounted()) {
         /* gateway_config_get() provides the default rules when nothing is loaded. */
         ESP_LOGW(TAG, "No SD card, default port rules active, task 3 outputs disabled");
         return;
     }
+
     const esp_err_t storage_error = gateway_config_prepare_storage();
     if (storage_error != ESP_OK) {
         ESP_LOGE(TAG, "Config directory unavailable: %s",
             esp_err_to_name(storage_error));
     }
+
     /* Errors are logged by the parsers; defaults stay active. */
     (void)gateway_config_load(GATEWAY_CONFIG_FILE);
     (void)output_config_load(GATEWAY_OUTPUT_CONFIG_FILE, &s_output_config);
@@ -220,14 +230,17 @@ static bool initialize_analog(void)
         ESP_LOGE(TAG, "Analog power GPIO initialization failed: %s",
             esp_err_to_name(error));
     }
+
     error = gpio_output_init();
     if (error != ESP_OK && error != ESP_ERR_NOT_SUPPORTED) {
         ESP_LOGE(TAG, "Digital output initialization failed: %s",
             esp_err_to_name(error));
     }
+
 #if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
     analog_bus_scan();
 #endif
+
     error = analog_vector_io_init(&s_analog);
     s_analog_available = error == ESP_OK;
     const bool analog_ok = error == ESP_OK || error == ESP_ERR_NOT_SUPPORTED;
@@ -246,6 +259,7 @@ static void load_profile(void)
         GATEWAY_PROFILE_CACHE_FILE,
         &s_profile,
         &cache_rebuilt);
+
     if (error == ESP_ERR_NOT_FOUND) {
         ESP_LOGW(TAG, "No profile on SD card, creating default profile");
         error = motion_profile_create_default_file(GATEWAY_PROFILE_JSON_FILE, &s_profile);
@@ -258,10 +272,12 @@ static void load_profile(void)
                 &cache_rebuilt);
         }
     }
+
     if (error != ESP_OK) {
         ESP_LOGW(TAG, "Profile unavailable: %s", esp_err_to_name(error));
         return;
     }
+
     s_profile_valid = true;
     ESP_LOGI(TAG, "Profile loaded: %.64s, cache_rebuilt=%s",
         s_profile.name, cache_rebuilt ? "yes" : "no");
@@ -281,6 +297,7 @@ static void initialize_profile(void)
     if (!sd_storage_is_mounted()) {
         return;
     }
+
     s_profile_done = xSemaphoreCreateBinary();
     if (s_profile_done == NULL ||
         xTaskCreate(profile_task, "profile_load", PROFILE_TASK_STACK, NULL,
@@ -311,15 +328,19 @@ static bool initialize_link(void)
             esp_err_to_name(error));
         return false;
     }
+
     p4_s3_link_start();
+
     /* Allow startup synchronization before application traffic starts. */
     vTaskDelay(pdMS_TO_TICKS(100U));
+
     error = s3_mirror_init();
     if (error != ESP_OK) {
         ESP_LOGE(TAG, "S3 mirror initialization failed: %s",
             esp_err_to_name(error));
         return false;
     }
+
     ESP_LOGI(TAG, "P4/S3 link initialized");
     return true;
 }
@@ -354,10 +375,12 @@ static void log_task3_status(void)
         return;
     }
     s_last_status_us = now;
+
     analog_engine_status_t engine;
     analog_engine_get_status(&engine);
     report_tap_stats_t tap;
     report_tap_get_stats(&tap);
+
     ESP_LOGI(TAG,
         "TASK3 mode=%s ticks=%lu overrun=%lu adc_err=%lu dac_err=%lu learned=%llu "
         "saving=%u save=%s tap_in=%lu tap_ok=%lu tap_drop=%lu tap_undecoded=%lu",
@@ -382,14 +405,20 @@ void usb_gateway_init(void)
     initialize_software_state();
     initialize_storage();
     initialize_configuration();
+
     const bool analog_ok = initialize_analog();
     s_last_analog_ok = analog_ok;
+
     initialize_profile();
+
     const bool link_ready = initialize_link();
     initialize_display();
+
     usb_device_init();
     usb_host_init();
+
     initialize_analog_engine();
+
     diagnostics_set_proxy_state(DIAG_STATE_READY, ESP_OK);
     update_display("READY", analog_ok);
 
