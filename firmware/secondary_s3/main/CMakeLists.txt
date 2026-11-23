@@ -1,15 +1,15 @@
 idf_component_register(
     SRCS
-        "main.c"
-        "spi_link.c"
-        "usb_device.c"
-        "keyboard_report_queue.c"
-        "p4_s3_protocol.c"
-        "s3_proxy_reports.c"
-        "g815_usb_descriptors.c"
         "g815_report_router.c"
         "g815_tinyusb_callbacks.c"
+        "g815_usb_descriptors.c"
+        "keyboard_report_queue.c"
+        "main.c"
+        "p4_s3_protocol.c"
         "s3_ota_receiver.c"
+        "s3_proxy_reports.c"
+        "spi_link.c"
+        "usb_device.c"
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -18,5 +18,6 @@ idf_component_register(
         esp_timer
         app_update
         esp_partition
+        esp_app_format
     WHOLE_ARCHIVE
 )

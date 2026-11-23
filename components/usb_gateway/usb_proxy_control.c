@@ -2,45 +2,168 @@
 
 #include <string.h>
 
-#include "p4_s3_link.h"
 #include "p4_s3_protocol.h"
+
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
 
-#define FRAGMENT_DATA_SIZE 56U
-#define REASSEMBLY_CAPACITY 512U
+#define CONTROL_QUEUE_DEPTH     16U
+#define CONTROL_TASK_STACK_SIZE 4096U
+#define CONTROL_TASK_PRIORITY   10U
+#define REASSEMBLY_CAPACITY     512U
 
-typedef struct __attribute__((packed)) {
-    uint8_t tag;
-    uint8_t interface_number;
-    uint8_t report_id;
-    uint8_t report_type;
-    uint8_t index;
-    uint8_t count;
-    uint8_t data_length;
-    uint8_t reserved;
-    uint8_t data[FRAGMENT_DATA_SIZE];
-} proxy_fragment_t;
+typedef struct {
+    uint8_t message_type;
+    uint8_t length;
+    uint8_t payload[P4_S3_PAYLOAD_SIZE];
+} control_item_t;
 
 static const char *TAG = "usb_proxy_control";
+
 static usb_proxy_host_set_report_fn s_set_report;
 static usb_proxy_host_get_report_fn s_get_report;
 static usb_proxy_host_control_fn s_control;
-static SemaphoreHandle_t s_lock;
+
+static QueueHandle_t s_queue;
 static uint8_t s_buffer[REASSEMBLY_CAPACITY];
 static uint8_t s_active_tag;
 static uint8_t s_expected_count;
 static uint8_t s_next_index;
 static size_t s_used;
+static uint32_t s_dropped;
 
-void usb_proxy_control_init(void)
+static esp_err_t collect_fragment(
+    const p4_s3_fragment_t *fragment,
+    size_t payload_length,
+    bool *complete)
 {
-    s_lock = xSemaphoreCreateMutex();
-    s_used = 0U;
-    s_expected_count = 0U;
-    s_next_index = 0U;
-    s_active_tag = 0U;
+    *complete = false;
+    if (payload_length < P4_S3_FRAGMENT_HEADER_SIZE ||
+        fragment->count == 0U ||
+        fragment->index >= fragment->count ||
+        fragment->data_length > P4_S3_FRAGMENT_DATA_SIZE ||
+        P4_S3_FRAGMENT_HEADER_SIZE + fragment->data_length > payload_length) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (fragment->index == 0U) {
+        s_active_tag = fragment->tag;
+        s_expected_count = fragment->count;
+        s_next_index = 0U;
+        s_used = 0U;
+    }
+    if (fragment->tag != s_active_tag ||
+        fragment->count != s_expected_count ||
+        fragment->index != s_next_index ||
+        s_used + fragment->data_length > sizeof(s_buffer)) {
+        s_expected_count = 0U;
+        s_next_index = 0U;
+        s_used = 0U;
+        return ESP_ERR_INVALID_STATE;
+    }
+    memcpy(&s_buffer[s_used], fragment->data, fragment->data_length);
+    s_used += fragment->data_length;
+    ++s_next_index;
+    *complete = s_next_index == s_expected_count;
+    return ESP_OK;
+}
+
+static esp_err_t dispatch_complete(
+    uint8_t message_type,
+    const p4_s3_fragment_t *fragment)
+{
+    switch (message_type) {
+        case P4_S3_MSG_OUTPUT_FRAGMENT:
+            return s_set_report != NULL
+                ? s_set_report(
+                    fragment->interface_number,
+                    fragment->report_id,
+                    USB_PROXY_REPORT_OUTPUT,
+                    s_buffer,
+                    s_used)
+                : ESP_ERR_INVALID_STATE;
+
+        case P4_S3_MSG_FEATURE_SET_FRAGMENT:
+            return s_set_report != NULL
+                ? s_set_report(
+                    fragment->interface_number,
+                    fragment->report_id,
+                    USB_PROXY_REPORT_FEATURE,
+                    s_buffer,
+                    s_used)
+                : ESP_ERR_INVALID_STATE;
+
+        case P4_S3_MSG_EP0_FRAGMENT:
+            if (s_control == NULL) {
+                return ESP_ERR_INVALID_STATE;
+            }
+            if (s_used < 8U) {
+                return ESP_ERR_INVALID_SIZE;
+            } else {
+                size_t data_length = s_used - 8U;
+                return s_control(
+                    s_buffer,
+                    &s_buffer[8],
+                    &data_length,
+                    (s_buffer[0] & 0x80U) != 0U);
+            }
+
+        default:
+            return ESP_ERR_NOT_SUPPORTED;
+    }
+}
+
+static void control_task(void *argument)
+{
+    (void)argument;
+    control_item_t item;
+    while (true) {
+        if (xQueueReceive(s_queue, &item, portMAX_DELAY) != pdPASS) {
+            continue;
+        }
+        const p4_s3_fragment_t *fragment =
+            (const p4_s3_fragment_t *)item.payload;
+        bool complete = false;
+        esp_err_t error = collect_fragment(fragment, item.length, &complete);
+        if (error != ESP_OK) {
+            ESP_LOGW(TAG, "Fragment rejected type=0x%02X tag=%u index=%u/%u: %s",
+                item.message_type, fragment->tag, fragment->index,
+                fragment->count, esp_err_to_name(error));
+            continue;
+        }
+        if (!complete) {
+            continue;
+        }
+        error = dispatch_complete(item.message_type, fragment);
+        ESP_LOGD(TAG, "Request type=0x%02X iface=%u id=0x%02X length=%u result=%s",
+            item.message_type, fragment->interface_number, fragment->report_id,
+            (unsigned)s_used, esp_err_to_name(error));
+        s_expected_count = 0U;
+        s_next_index = 0U;
+        s_used = 0U;
+    }
+}
+
+esp_err_t usb_proxy_control_init(void)
+{
+    if (s_queue != NULL) {
+        return ESP_OK;
+    }
+    s_queue = xQueueCreate(CONTROL_QUEUE_DEPTH, sizeof(control_item_t));
+    if (s_queue == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+    if (xTaskCreate(
+            control_task,
+            "usb_proxy_ctrl",
+            CONTROL_TASK_STACK_SIZE,
+            NULL,
+            CONTROL_TASK_PRIORITY,
+            NULL) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
 }
 
 void usb_proxy_control_register_host(
@@ -53,173 +176,32 @@ void usb_proxy_control_register_host(
     s_control = control_fn;
 }
 
-static esp_err_t send_fragments(
-    uint8_t type,
-    uint8_t tag,
-    uint8_t interface_number,
-    uint8_t report_id,
-    uint8_t report_type,
-    const uint8_t *data,
-    size_t length)
-{
-    uint8_t count = (uint8_t)(
-        (length + FRAGMENT_DATA_SIZE - 1U) / FRAGMENT_DATA_SIZE);
-    if (count == 0U) {
-        count = 1U;
-    }
-
-    for (uint8_t index = 0U; index < count; ++index) {
-        const size_t chunk = length > FRAGMENT_DATA_SIZE
-            ? FRAGMENT_DATA_SIZE
-            : length;
-        proxy_fragment_t fragment = {
-            .tag = tag,
-            .interface_number = interface_number,
-            .report_id = report_id,
-            .report_type = report_type,
-            .index = index,
-            .count = count,
-            .data_length = (uint8_t)chunk,
-        };
-        if (chunk > 0U && data != NULL) {
-            memcpy(fragment.data, data, chunk);
-            data += chunk;
-            length -= chunk;
-        }
-        if (!p4_s3_link_enqueue(
-                type,
-                (const uint8_t *)&fragment,
-                8U + chunk)) {
-            return ESP_ERR_NO_MEM;
-        }
-    }
-    return ESP_OK;
-}
-
-static esp_err_t collect_fragment(
-    const proxy_fragment_t *fragment,
-    size_t payload_length,
-    bool *complete)
-{
-    if (fragment == NULL || complete == NULL ||
-        payload_length < 8U ||
-        fragment->count == 0U ||
-        fragment->index >= fragment->count ||
-        fragment->data_length > FRAGMENT_DATA_SIZE ||
-        8U + fragment->data_length > payload_length) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    if (fragment->index == 0U) {
-        s_active_tag = fragment->tag;
-        s_expected_count = fragment->count;
-        s_next_index = 0U;
-        s_used = 0U;
-    }
-
-    if (fragment->tag != s_active_tag ||
-        fragment->count != s_expected_count ||
-        fragment->index != s_next_index ||
-        s_used + fragment->data_length > sizeof(s_buffer)) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    memcpy(
-        s_buffer + s_used,
-        fragment->data,
-        fragment->data_length);
-    s_used += fragment->data_length;
-    ++s_next_index;
-    *complete = s_next_index == s_expected_count;
-    return ESP_OK;
-}
-
 esp_err_t usb_proxy_control_from_s3(
-    uint8_t type,
+    uint8_t message_type,
     const uint8_t *payload,
     size_t length)
 {
-    if (payload == NULL || length < 8U || s_lock == NULL) {
+    if (message_type != P4_S3_MSG_OUTPUT_FRAGMENT &&
+        message_type != P4_S3_MSG_FEATURE_SET_FRAGMENT &&
+        message_type != P4_S3_MSG_EP0_FRAGMENT) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (payload == NULL ||
+        length < P4_S3_FRAGMENT_HEADER_SIZE ||
+        length > P4_S3_PAYLOAD_SIZE) {
         return ESP_ERR_INVALID_ARG;
     }
-
-    const proxy_fragment_t *fragment =
-        (const proxy_fragment_t *)payload;
-
-    if (type == P4_S3_MSG_FEATURE_GET) {
-        if (s_get_report == NULL) {
-            return ESP_ERR_NOT_SUPPORTED;
-        }
-        size_t response_length = sizeof(s_buffer);
-        const esp_err_t error = s_get_report(
-            fragment->interface_number,
-            fragment->report_id,
-            USB_PROXY_REPORT_FEATURE,
-            s_buffer,
-            &response_length);
-        if (error != ESP_OK) {
-            return error;
-        }
-        return send_fragments(
-            P4_S3_MSG_CONTROL_RESPONSE_FRAGMENT,
-            fragment->tag,
-            fragment->interface_number,
-            fragment->report_id,
-            USB_PROXY_REPORT_FEATURE,
-            s_buffer,
-            response_length);
+    if (s_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
     }
-
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(1000U)) != pdTRUE) {
-        return ESP_ERR_TIMEOUT;
+    control_item_t item = {
+        .message_type = message_type,
+        .length = (uint8_t)length,
+    };
+    memcpy(item.payload, payload, length);
+    if (xQueueSend(s_queue, &item, 0U) != pdPASS) {
+        ++s_dropped;
+        return ESP_ERR_NO_MEM;
     }
-
-    bool complete = false;
-    esp_err_t error = collect_fragment(fragment, length, &complete);
-    if (error == ESP_OK && complete) {
-        if (type == P4_S3_MSG_OUTPUT_FRAGMENT && s_set_report != NULL) {
-            error = s_set_report(
-                fragment->interface_number,
-                fragment->report_id,
-                USB_PROXY_REPORT_OUTPUT,
-                s_buffer,
-                s_used);
-        } else if (type == P4_S3_MSG_FEATURE_SET_FRAGMENT &&
-                   s_set_report != NULL) {
-            error = s_set_report(
-                fragment->interface_number,
-                fragment->report_id,
-                USB_PROXY_REPORT_FEATURE,
-                s_buffer,
-                s_used);
-        } else if (type == P4_S3_MSG_EP0_FRAGMENT && s_control != NULL) {
-            if (s_used < 8U) {
-                error = ESP_ERR_INVALID_SIZE;
-            } else {
-                size_t control_length = s_used - 8U;
-                error = s_control(
-                    s_buffer,
-                    s_buffer + 8U,
-                    &control_length,
-                    (s_buffer[0] & 0x80U) != 0U);
-            }
-        } else {
-            error = ESP_ERR_NOT_SUPPORTED;
-        }
-    }
-
-    xSemaphoreGive(s_lock);
-
-    if (complete) {
-        ESP_LOGD(
-            TAG,
-            "Control request type=0x%02X tag=%u iface=%u id=0x%02X length=%u result=%s",
-            type,
-            fragment->tag,
-            fragment->interface_number,
-            fragment->report_id,
-            (unsigned)s_used,
-            esp_err_to_name(error));
-    }
-    return error;
+    return ESP_OK;
 }

@@ -1,4 +1,3 @@
-
 menu "USB HID Gateway"
 config USB_GATEWAY_ADS7128_ENABLE
     bool "Enable ADS7128"
@@ -55,35 +54,58 @@ config USB_GATEWAY_PROFILE_EXPORT_HID_USAGE
 config USB_GATEWAY_PROFILE_EXPORT_MODIFIER_MASK
     hex "Export modifier mask"
     default 0x05
-config USB_GATEWAY_VERBOSE_CAPTURE_ENABLE
-    bool "Enable verbose SD capture"
-    default n
-config USB_GATEWAY_VERBOSE_CAPTURE_BOOT_ENABLE
-    bool "Start verbose capture at boot"
-    default n
-config USB_GATEWAY_VERBOSE_CAPTURE_DURATION_S
-    int "Capture duration seconds"
-    default 600
-config USB_GATEWAY_VERBOSE_CAPTURE_MAX_TOTAL_MIB
-    int "Maximum capture budget MiB"
-    default 256
-config USB_GATEWAY_VERBOSE_CAPTURE_FILE_MIB
-    int "Maximum file size MiB"
-    default 8
-config USB_GATEWAY_VERBOSE_CAPTURE_FLUSH_MS
-    int "Capture flush interval ms"
-    default 1000
-config USB_GATEWAY_SELF_TEST_ENABLE
-    bool "Enable self-test framework"
-    default y
-config USB_GATEWAY_SELF_TEST_SAFE_AT_BOOT
-    bool "Run safe self-tests at boot"
-    default y
-config USB_GATEWAY_SELF_TEST_HARDWARE_AT_BOOT
-    bool "Run hardware-active tests at boot"
-    default n
 endmenu
-
+menu "Capture and diagnostics"
+config USB_GATEWAY_CAPTURE_ENABLE
+    bool "Enable capture (periodic diagnostics on the monitor)"
+    default n
+    help
+        Master switch. Enables the periodic diagnostic report (system, USB,
+        proxy, P4/S3 link, I2C) on the console. Event messages such as device
+        attach/detach and errors are always logged.
+config USB_GATEWAY_CAPTURE_DIAG_PERIOD_S
+    int "Diagnostic report period in seconds"
+    depends on USB_GATEWAY_CAPTURE_ENABLE
+    range 1 3600
+    default 5
+choice USB_GATEWAY_CAPTURE_LEVEL
+    prompt "Capture level"
+    depends on USB_GATEWAY_CAPTURE_ENABLE
+    default USB_GATEWAY_CAPTURE_LEVEL_MONITOR
+    help
+        MONITOR: periodic diagnostics on the console only.
+        SD: additionally a binary event log under /sdcard/logs, started at boot.
+config USB_GATEWAY_CAPTURE_LEVEL_MONITOR
+    bool "MONITOR - console diagnostics"
+config USB_GATEWAY_CAPTURE_LEVEL_SD
+    bool "SD - console diagnostics and SD event log"
+endchoice
+config USB_GATEWAY_CAPTURE_SD_DURATION_S
+    int "SD event log duration in seconds (0 = until size budget)"
+    depends on USB_GATEWAY_CAPTURE_LEVEL_SD
+    range 0 86400
+    default 600
+config USB_GATEWAY_CAPTURE_SD_MAX_TOTAL_MIB
+    int "SD event log size budget per session in MiB"
+    depends on USB_GATEWAY_CAPTURE_LEVEL_SD
+    range 1 4096
+    default 256
+config USB_GATEWAY_CAPTURE_SD_FILE_MIB
+    int "SD event log maximum file size in MiB"
+    depends on USB_GATEWAY_CAPTURE_LEVEL_SD
+    range 1 1024
+    default 8
+config USB_GATEWAY_CAPTURE_SD_FLUSH_MS
+    int "SD event log flush interval in ms"
+    depends on USB_GATEWAY_CAPTURE_LEVEL_SD
+    range 100 60000
+    default 1000
+config USB_GATEWAY_CAPTURE_SD_QUEUE_DEPTH
+    int "SD event log record queue depth"
+    depends on USB_GATEWAY_CAPTURE_LEVEL_SD
+    range 16 4096
+    default 512
+endmenu
 menu "Digital outputs"
 config USB_GATEWAY_DIGITAL_OUTPUT_ACTIVE_LOW
     bool "Digital outputs active-low"
@@ -125,8 +147,7 @@ config USB_GATEWAY_DIGITAL_OUTPUT_11_GPIO
     int "Digital output 11 GPIO (-1 disabled)"
     default -1
 endmenu
-
-menu "SD card and verbose capture"
+menu "SD card"
 config USB_GATEWAY_SDMMC_CLK_GPIO
     int "SDMMC CLK GPIO"
     default 43
@@ -146,11 +167,7 @@ config USB_GATEWAY_SDMMC_FREQ_KHZ
 config USB_GATEWAY_SD_MAX_FILES
     int "Maximum open SD files"
     default 8
-config USB_GATEWAY_VERBOSE_CAPTURE_QUEUE_DEPTH
-    int "Verbose capture record queue depth"
-    default 512
 endmenu
-
 menu "P4/S3 status correlation"
 config USB_GATEWAY_S3_STATUS_POLL_MS
     int "Status poll interval ms"
@@ -161,7 +178,6 @@ config USB_GATEWAY_S3_STATUS_POLL_LIMIT
     range 1 100
     default 10
 endmenu
-
 menu "P4 to S3 SPI2 bus"
 config USB_GATEWAY_S3_SPI_SCLK_GPIO
     int "S3 SPI SCLK GPIO"
@@ -188,7 +204,6 @@ config USB_GATEWAY_S3_REARM_GUARD_US
         SPI transaction. This gives the ESP32-S3 slave task time to process the
         received frame and queue the next 72-byte transaction.
 endmenu
-
 menu "SSD1306 SPI3 bus"
 config USB_GATEWAY_SSD1306_ENABLE
     bool "Enable SSD1306 status display"
@@ -221,43 +236,7 @@ config USB_GATEWAY_SSD1306_REFRESH_MS
     range 50 2000
     default 200
 endmenu
-
-menu "Keyboard end-to-end test pattern"
-
-config USB_GATEWAY_KEYBOARD_TEST_ENABLE
-    bool "Build keyboard test-pattern runner"
-    default y
-
-config USB_GATEWAY_KEYBOARD_TEST_BOOT_ENABLE
-    bool "Run keyboard test pattern automatically at boot"
-    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
-    default n
-    help
-        Dangerous on a normal workstation. The runner sends real keyboard
-        input after the configured countdown. Enable only for a dedicated test.
-
-config USB_GATEWAY_KEYBOARD_TEST_COUNTDOWN_S
-    int "Countdown before keyboard input"
-    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
-    range 3 30
-    default 5
-
-config USB_GATEWAY_KEYBOARD_TEST_DOWN_MS
-    int "Default key-down time in milliseconds"
-    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
-    range 2 1000
-    default 20
-
-config USB_GATEWAY_KEYBOARD_TEST_UP_MS
-    int "Default key-release time in milliseconds"
-    depends on USB_GATEWAY_KEYBOARD_TEST_ENABLE
-    range 2 1000
-    default 20
-
-endmenu
-
 menu "Secondary S3 SPI OTA"
-
 config USB_GATEWAY_S3_OTA_ENABLE
     bool "Enable S3 application update over the P4/S3 SPI link"
     default y
@@ -265,25 +244,20 @@ config USB_GATEWAY_S3_OTA_ENABLE
         Checks for a trigger file on the SD card after the P4/S3 link starts.
         Only the S3 application image is updated. The S3 bootloader and
         partition table remain unchanged.
-
 config USB_GATEWAY_S3_OTA_IMAGE_PATH
     string "S3 application image path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.bin"
-
 config USB_GATEWAY_S3_OTA_VERSION_PATH
     string "S3 image version text path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.version"
-
 config USB_GATEWAY_S3_OTA_TRIGGER_PATH
     string "S3 OTA trigger path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.update"
-
 config USB_GATEWAY_S3_OTA_DONE_PATH
     string "Completed S3 OTA marker path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.done"
-
 endmenu
