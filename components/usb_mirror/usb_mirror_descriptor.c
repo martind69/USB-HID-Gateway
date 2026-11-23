@@ -116,7 +116,8 @@ esp_err_t usb_mirror_parse_configuration(
     }
 
     for (uint8_t index = 0U; index < layout->hid_count; ++index) {
-        if (layout->hid_report_length[index] == 0U) {
+        if (layout->hid_report_length[index] == 0U ||
+            layout->hid_report_length[index] > USB_MIRROR_REPORT_DESC_CAPACITY) {
             supported = false;
         }
     }

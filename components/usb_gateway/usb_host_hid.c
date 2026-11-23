@@ -3,9 +3,9 @@
 #include <string.h>
 
 #include "diagnostics.h"
-#include "g815_capture.h"
-#include "g815_forwarder.h"
+#include "usb_capture.h"
 #include "hid_proxy.h"
+#include "s3_mirror.h"
 #include "usb_device.h"
 #include "usb_host.h"
 
@@ -117,22 +117,19 @@ static void route_report(
             break;
 
         case GATEWAY_PORT_TARGET_S3:
-            if (g815_capture_is_active()) {
-                (void)g815_capture_event(
-                    G815_CAPTURE_EVENT_INPUT_REPORT,
+            if (usb_capture_is_active()) {
+                (void)usb_capture_event(
+                    USB_CAPTURE_EVENT_INPUT_REPORT,
                     interface_number,
-                    interface_number == 1U ? report[0] : 0U,
+                    0U,
                     0U,
                     report,
                     report_length,
                     ESP_OK);
             }
-            if (g815_forwarder_submit(interface_number, report, report_length)) {
+            /* false while the session is being (re-)sent: report dropped. */
+            if (s3_mirror_input(address, interface_number, report, report_length)) {
                 diagnostics_report_proxy_forwarded();
-            } else {
-                diagnostics_report_proxy_error(ESP_ERR_NO_MEM);
-                ESP_LOGW(TAG, "S3 forwarding rejected: iface=%u length=%u",
-                    interface_number, (unsigned)report_length);
             }
             break;
 
@@ -245,16 +242,21 @@ static esp_err_t open_interface_once(usb_host_hid_interface_t *interface)
         0U,
         (uint16_t)descriptor_length);
 
-    /* Mirror gets every report descriptor; it keeps only p4_fs devices. */
+    /* Both mirrors receive every report descriptor; each keeps its own session. */
     usb_device_mirror_set_report_descriptor(
         interface->params.addr,
         interface->params.iface_num,
         descriptor,
         descriptor_length);
+    s3_mirror_set_report_descriptor(
+        interface->params.addr,
+        interface->params.iface_num,
+        descriptor,
+        descriptor_length);
 
-    if (g815_capture_is_active() &&
+    if (usb_capture_is_active() &&
         usb_host_route(interface->params.addr) == GATEWAY_PORT_TARGET_S3) {
-        const esp_err_t capture_error = g815_capture_write_report_descriptor(
+        const esp_err_t capture_error = usb_capture_write_report_descriptor(
             interface->params.iface_num,
             descriptor,
             descriptor_length);
@@ -343,7 +345,6 @@ esp_err_t usb_host_hid_init(void)
     memset(s_interfaces, 0, sizeof(s_interfaces));
     s_next_interface_id = 1U;
     s_interface_count = 0U;
-    g815_forwarder_init();
     s_open_queue = xQueueCreate(USB_HOST_HID_OPEN_QUEUE_DEPTH, sizeof(hid_open_request_t));
     if (s_open_queue == NULL) {
         return ESP_ERR_NO_MEM;

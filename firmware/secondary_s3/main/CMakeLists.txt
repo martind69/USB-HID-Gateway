@@ -1,23 +1,17 @@
 idf_component_register(
     SRCS
-        "g815_report_router.c"
-        "g815_tinyusb_callbacks.c"
-        "g815_usb_descriptors.c"
-        "keyboard_report_queue.c"
         "main.c"
-        "p4_s3_protocol.c"
+        "s3_mirror_session.c"
         "s3_ota_receiver.c"
         "s3_proxy_reports.c"
         "spi_link.c"
-        "usb_device.c"
     INCLUDE_DIRS
         "."
     REQUIRES
-        esp_tinyusb
+        usb_mirror
         driver
         esp_timer
         app_update
         esp_partition
         esp_app_format
-    WHOLE_ARCHIVE
 )

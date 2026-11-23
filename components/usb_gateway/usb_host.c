@@ -6,10 +6,9 @@
 #include <string.h>
 
 #include "diagnostics.h"
-#include "g815_capture.h"
+#include "usb_capture.h"
 #include "gateway_config.h"
-#include "p4_s3_link.h"
-#include "p4_s3_protocol.h"
+#include "s3_mirror.h"
 #include "usb_device.h"
 #include "usb_host_control_bridge.h"
 #include "usb_host_hid.h"
@@ -134,10 +133,10 @@ static void start_capture(
     const usb_device_desc_t *device_desc,
     const usb_config_desc_t *config_desc)
 {
-    if (g815_capture_is_active()) {
+    if (usb_capture_is_active()) {
         return;
     }
-    const g815_capture_device_info_t capture_info = {
+    const usb_capture_device_info_t capture_info = {
         .vendor_id = device_desc->idVendor,
         .product_id = device_desc->idProduct,
         .bcd_device = device_desc->bcdDevice,
@@ -145,17 +144,17 @@ static void start_capture(
         .configuration_value = info->bConfigurationValue,
         .interface_count = config_desc->bNumInterfaces,
     };
-    esp_err_t error = g815_capture_start(&capture_info);
+    esp_err_t error = usb_capture_start(&capture_info);
     if (error != ESP_OK) {
         ESP_LOGW(TAG, "Capture not started: %s", esp_err_to_name(error));
         return;
     }
     s_capture_address = slot->address;
-    error = g815_capture_write_device_descriptor(
+    error = usb_capture_write_device_descriptor(
         (const uint8_t *)device_desc,
         sizeof(*device_desc));
     if (error == ESP_OK) {
-        error = g815_capture_write_configuration_descriptor(
+        error = usb_capture_write_configuration_descriptor(
             (const uint8_t *)config_desc,
             config_desc->wTotalLength);
     }
@@ -167,12 +166,12 @@ static void start_capture(
 
 static void stop_capture(uint8_t address)
 {
-    if (address != s_capture_address || !g815_capture_is_active()) {
+    if (address != s_capture_address || !usb_capture_is_active()) {
         return;
     }
-    (void)g815_capture_event(
-        G815_CAPTURE_EVENT_DETACH, 0xFFU, 0U, 0U, NULL, 0U, ESP_OK);
-    const esp_err_t error = g815_capture_stop();
+    (void)usb_capture_event(
+        USB_CAPTURE_EVENT_DETACH, 0xFFU, 0U, 0U, NULL, 0U, ESP_OK);
+    const esp_err_t error = usb_capture_stop();
     if (error != ESP_OK) {
         ESP_LOGW(TAG, "Cannot stop capture: %s", esp_err_to_name(error));
     }
@@ -181,8 +180,8 @@ static void stop_capture(uint8_t address)
 
 /*
  * Assigns the device to a mirror target according to gateway.json and
- * starts the corresponding path. Device identity is only compared in
- * gateway_config, never here.
+ * starts the corresponding mirror session. Device identity is only compared
+ * in gateway_config, never here.
  */
 static void assign_device(
     usb_host_device_slot_t *slot,
@@ -194,7 +193,7 @@ static void assign_device(
     const esp_err_t layout_error = usb_mirror_parse_configuration(
         (const uint8_t *)config_desc,
         config_desc->wTotalLength,
-        usb_device_mirror_max_hid(),
+        USB_MIRROR_MAX_HID_INTERFACES,
         64U,
         &layout);
     if (layout_error == ESP_ERR_INVALID_SIZE) {
@@ -208,18 +207,20 @@ static void assign_device(
     };
     gateway_port_target_t target = gateway_port_claim(slot->address, &identity);
 
+    esp_err_t error = ESP_OK;
     if (target == GATEWAY_PORT_TARGET_P4_FS) {
-        const esp_err_t error = usb_device_mirror_begin(
-            slot->address, device_desc, config_desc, info);
-        if (error != ESP_OK) {
-            ESP_LOGE(TAG, "addr=%u: p4_fs mirror rejected (%s), device used as tap",
-                slot->address, esp_err_to_name(error));
-            gateway_port_release(slot->address);
-            target = GATEWAY_PORT_TARGET_TAP;
-        }
+        error = usb_device_mirror_begin(slot->address, device_desc, config_desc, info);
     } else if (target == GATEWAY_PORT_TARGET_S3) {
-        (void)p4_s3_link_enqueue(P4_S3_MSG_G815_ATTACH, NULL, 0U);
-        start_capture(slot, info, device_desc, config_desc);
+        error = s3_mirror_begin(slot->address, device_desc, config_desc, info);
+        if (error == ESP_OK) {
+            start_capture(slot, info, device_desc, config_desc);
+        }
+    }
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "addr=%u: %s mirror rejected (%s), device used as tap",
+            slot->address, gateway_port_target_name(target), esp_err_to_name(error));
+        gateway_port_release(slot->address);
+        target = GATEWAY_PORT_TARGET_TAP;
     }
     if (target == GATEWAY_PORT_TARGET_P4_FS || target == GATEWAY_PORT_TARGET_S3) {
         usb_host_control_bridge_attach(target, slot->handle, slot->address);
@@ -301,13 +302,10 @@ error_close:
 static void usb_host_close_device(usb_host_device_slot_t *slot)
 {
     if (slot->opened && slot->handle != NULL) {
-        const gateway_port_target_t target = usb_host_route(slot->address);
         s_route[slot->address] = (uint8_t)GATEWAY_PORT_TARGET_NONE;
-        if (target == GATEWAY_PORT_TARGET_S3) {
-            (void)p4_s3_link_enqueue(P4_S3_MSG_G815_DETACH, NULL, 0U);
-        }
-        /* Ends a p4_fs session; also drops cached report descriptors. */
+        /* Both calls are no-ops for devices that are not their session. */
         usb_device_mirror_end(slot->address);
+        s3_mirror_end(slot->address);
         usb_host_control_bridge_detach(slot->address);
         gateway_port_release(slot->address);
         stop_capture(slot->address);

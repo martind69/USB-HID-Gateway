@@ -15,7 +15,14 @@ extern "C" {
  * Pure C, no ESP-IDF or TinyUSB dependency, host-testable.
  */
 
-#define USB_MIRROR_MAX_HID_INTERFACES   4U
+#define USB_MIRROR_MAX_HID_INTERFACES       4U
+#define USB_MIRROR_CONFIGURATION_CAPACITY   512U
+#define USB_MIRROR_REPORT_DESC_CAPACITY     512U
+#define USB_MIRROR_DEVICE_DESC_LENGTH       18U
+
+/* String table: index 0 = language ID, 1..3 = mirrorable string indices. */
+#define USB_MIRROR_STRING_COUNT             4U
+#define USB_MIRROR_STRING_CAPACITY          32U     /* 31 characters + NUL */
 
 typedef struct {
     uint8_t interface_count;        /* bNumInterfaces */
@@ -56,7 +63,7 @@ int usb_mirror_hid_instance(
 
 /*
  * Converts a raw string descriptor (bLength, 0x03, UTF-16LE) to ASCII.
- * Characters >= 0x80 become '?'. Output is always NUL-terminated.
+ * Characters outside 0x20..0x7E become '?'. Output is always NUL-terminated.
  * Returns the number of characters written; *lossy is set if characters
  * were replaced or truncated.
  */

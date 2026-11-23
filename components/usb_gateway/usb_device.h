@@ -12,28 +12,18 @@ extern "C" {
 #endif
 
 /*
- * Transparent USB mirror on the P4 USB1P1 full-speed device port.
+ * P4 USB1P1 full-speed device port: transparent mirror of the device
+ * assigned to target "p4_fs" in /sdcard/config/gateway.json.
+ * The mirror itself is component usb_mirror (shared with the S3); this
+ * module adds the P4 specifics: PHY routing, host descriptor conversion and
+ * the EP0 path to the real device.
  *
- * The PC sees exactly the device assigned to target "p4_fs" in
- * /sdcard/config/gateway.json: device, configuration, report and string
- * descriptors are copied at runtime from the real device. No device
- * identity is compiled in.
- *
- * Lifecycle (address = USB host address of the real device):
- *     usb_device_mirror_begin()                 descriptors from usb_host.c
- *     usb_device_mirror_set_report_descriptor() per HID interface, any order
- *     -> connect to PC when all report descriptors are present
- *     usb_device_mirror_input()                 raw input reports, unchanged
- *     usb_device_mirror_end()                   disconnect from PC
- *
- * PC -> device: HID SET_REPORT (output, feature, interrupt OUT data) is
- * forwarded unchanged to EP0 of the real device.
+ * address = USB host address of the real device (= mirror session id).
  */
 
 void usb_device_init(void);
 void usb_device_process(void);
 
-/* Maximum mirrorable HID interfaces (min of TinyUSB CFG_TUD_HID and parser). */
 size_t usb_device_mirror_max_hid(void);
 
 esp_err_t usb_device_mirror_begin(

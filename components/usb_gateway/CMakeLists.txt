@@ -9,8 +9,6 @@ idf_component_register(
         "continuous_motion_learner.c"
         "dac7578.c"
         "diagnostics.c"
-        "g815_capture.c"
-        "g815_forwarder.c"
         "gateway_config.c"
         "gpio_output.c"
         "hid_parser.c"
@@ -27,10 +25,10 @@ idf_component_register(
         "motion_profile_parser.c"
         "motion_profile_storage.c"
         "p4_s3_link.c"
-        "p4_s3_protocol.c"
         "profile_export.c"
         "profile_feedback.c"
         "radial_envelope.c"
+        "s3_mirror.c"
         "s3_ota_manager.c"
         "sd_storage.c"
         "shared_spi_bus.c"
@@ -38,17 +36,18 @@ idf_component_register(
         "ssd1306_font.c"
         "ssd1306_status_renderer.c"
         "trajectory_generator.c"
+        "usb_capture.c"
         "usb_device.c"
         "usb_gateway.c"
         "usb_host.c"
         "usb_host_control_bridge.c"
         "usb_host_hid.c"
-        "usb_mirror_descriptor.c"
         "usb_proxy_control.c"
     INCLUDE_DIRS
         "."
         "include"
     REQUIRES
+        usb_mirror
         log
         freertos
         esp_timer

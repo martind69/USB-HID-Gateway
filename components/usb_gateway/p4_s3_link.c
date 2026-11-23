@@ -20,8 +20,11 @@
 #define LINK_TASK_STACK_SIZE            4096U
 #define LINK_TASK_PRIORITY              18U
 
-/* Maximum wait for the STATUS response to a normal (non-OTA) frame. */
+/* Maximum wait for the STATUS response to a normal frame. */
 #define LINK_NORMAL_RESPONSE_TIMEOUT_US 100000LL
+
+/* Mirror session control may connect the S3 USB device: longer window. */
+#define LINK_MIRROR_RESPONSE_TIMEOUT_US 1000000LL
 
 /* Poll interval while waiting for the STATUS response to an OTA frame. */
 #define LINK_OTA_POLL_DELAY_MS          2U
@@ -29,7 +32,7 @@
 /*
  * Poll interval while the transmit queue is empty.
  * The S3 is an SPI slave and can only deliver S3 -> P4 frames (PC SET_REPORT
- * requests) when the P4 clocks a transaction.
+ * requests, session requests) when the P4 clocks a transaction.
  */
 #define LINK_IDLE_POLL_MS               2U
 
@@ -54,6 +57,7 @@ static portMUX_TYPE s_sequence_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint8_t s_sequence;
 static uint32_t s_dropped;
 static volatile bool s_exclusive;
+static volatile p4_s3_link_event_handler_t s_event_handler;
 
 static uint8_t next_sequence(void)
 {
@@ -88,8 +92,8 @@ static void publish_acknowledgement(const p4_s3_ack_t *acknowledgement)
 /*
  * Evaluate one frame received from the S3.
  * STATUS frames are only accepted when a response is expected and the
- * sequence number matches. Every other frame type is S3 -> P4 data and is
- * handed to usb_proxy_control without blocking this task.
+ * sequence number matches. MIRROR_REQUEST goes to the event handler; every
+ * other frame type is PC-to-device traffic for usb_proxy_control.
  */
 static inbound_result_t handle_inbound(
     const p4_s3_frame_t *frame,
@@ -131,6 +135,13 @@ static inbound_result_t handle_inbound(
         link_metrics_on_rx(acknowledgement.round_trip_us);
         publish_acknowledgement(&acknowledgement);
         return INBOUND_STATUS;
+    }
+    if (type == P4_S3_MSG_MIRROR_REQUEST) {
+        const p4_s3_link_event_handler_t handler = s_event_handler;
+        if (handler != NULL) {
+            handler(type, &frame->raw[P4_S3_OFFSET_PAYLOAD], length);
+        }
+        return INBOUND_DATA;
     }
     const esp_err_t error = usb_proxy_control_from_s3(
         type,
@@ -189,8 +200,10 @@ static void process_command(
 
     /* OTA commands wait without timeout; S3 flash erase may take seconds. */
     const bool unlimited_wait = p4_s3_is_ota_message(message_type);
-    const int64_t deadline_us =
-        esp_timer_get_time() + LINK_NORMAL_RESPONSE_TIMEOUT_US;
+    const int64_t deadline_us = esp_timer_get_time() +
+        (p4_s3_is_mirror_control(message_type)
+            ? LINK_MIRROR_RESPONSE_TIMEOUT_US
+            : LINK_NORMAL_RESPONSE_TIMEOUT_US);
 
     while (!acknowledged &&
         (unlimited_wait || esp_timer_get_time() < deadline_us)) {
@@ -262,7 +275,16 @@ void p4_s3_link_start(void)
     }
 }
 
-bool p4_s3_link_enqueue(uint8_t type, const uint8_t *payload, size_t length)
+void p4_s3_link_set_event_handler(p4_s3_link_event_handler_t handler)
+{
+    s_event_handler = handler;
+}
+
+static bool enqueue_frame(
+    uint8_t type,
+    const uint8_t *payload,
+    size_t length,
+    uint8_t *sequence_out)
 {
     if (s_tx_queue == NULL || length > P4_S3_PAYLOAD_SIZE) {
         ++s_dropped;
@@ -272,11 +294,12 @@ bool p4_s3_link_enqueue(uint8_t type, const uint8_t *payload, size_t length)
         ++s_dropped;
         return false;
     }
+    const uint8_t sequence = next_sequence();
     queued_frame_t queued;
     p4_s3_frame_build(
         &queued.frame,
         type,
-        next_sequence(),
+        sequence,
         payload,
         (uint8_t)length);
     if (xQueueSend(s_tx_queue, &queued, 0U) != pdPASS) {
@@ -284,7 +307,15 @@ bool p4_s3_link_enqueue(uint8_t type, const uint8_t *payload, size_t length)
         link_metrics_on_queue_overflow();
         return false;
     }
+    if (sequence_out != NULL) {
+        *sequence_out = sequence;
+    }
     return true;
+}
+
+bool p4_s3_link_enqueue(uint8_t type, const uint8_t *payload, size_t length)
+{
+    return enqueue_frame(type, payload, length, NULL);
 }
 
 bool p4_s3_link_wait_status(p4_s3_ack_t *acknowledgement, uint32_t timeout_ms)
@@ -312,16 +343,36 @@ esp_err_t p4_s3_link_command(
     if (xSemaphoreTake(s_command_lock, wait_ticks) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
+    /*
+     * Acknowledgements of fire-and-forget frames (input reports) share the
+     * queue. Only the STATUS whose sequence matches this command counts.
+     */
     p4_s3_ack_t stale;
     while (xQueueReceive(s_ack_queue, &stale, 0U) == pdPASS) {
     }
-    esp_err_t error = ESP_OK;
-    if (!p4_s3_link_enqueue(type, payload, length)) {
+    esp_err_t error = ESP_ERR_TIMEOUT;
+    uint8_t sequence = 0U;
+    if (!enqueue_frame(type, payload, length, &sequence)) {
         error = ESP_ERR_NO_MEM;
-    } else if (xQueueReceive(s_ack_queue, acknowledgement, wait_ticks) != pdPASS) {
-        error = ESP_ERR_TIMEOUT;
-    } else if (acknowledgement->status != 0U) {
-        error = ESP_FAIL;
+    } else {
+        const TickType_t started = xTaskGetTickCount();
+        while (true) {
+            TickType_t remaining = portMAX_DELAY;
+            if (timeout_ms != UINT32_MAX) {
+                const TickType_t elapsed = xTaskGetTickCount() - started;
+                if (elapsed >= wait_ticks) {
+                    break;
+                }
+                remaining = wait_ticks - elapsed;
+            }
+            if (xQueueReceive(s_ack_queue, acknowledgement, remaining) != pdPASS) {
+                break;
+            }
+            if (acknowledgement->sequence == sequence) {
+                error = acknowledgement->status != 0U ? ESP_FAIL : ESP_OK;
+                break;
+            }
+        }
     }
     xSemaphoreGive(s_command_lock);
     return error;

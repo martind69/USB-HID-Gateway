@@ -32,8 +32,8 @@ typedef struct {
 /*
  * HID input path on the P4 host port.
  * Raw input reports are routed by the target assigned in usb_host.c:
- *     p4_fs -> usb_device_mirror_input()   (unchanged bytes)
- *     s3    -> g815_forwarder_submit()     (SPI link to the S3)
+ *     p4_fs -> usb_device_mirror_input()   (P4 USB1P1 mirror)
+ *     s3    -> s3_mirror_input()           (SPI link to the S3 mirror)
  *     tap   -> hid_proxy                   (task 3 input only)
  *     none  -> dropped
  */

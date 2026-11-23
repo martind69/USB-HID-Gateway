@@ -2,12 +2,10 @@
 
 #include <string.h>
 
-#include "g815_report_router.h"
-#include "g815_usb_descriptors.h"
 #include "p4_s3_protocol.h"
+#include "s3_mirror_session.h"
 #include "s3_ota_receiver.h"
 #include "s3_proxy_reports.h"
-#include "usb_device.h"
 
 #include "driver/spi_slave.h"
 #include "esp_log.h"
@@ -24,8 +22,6 @@ static p4_s3_frame_t s_rx;
 static uint32_t s_received;
 static uint32_t s_invalid;
 static uint32_t s_transactions_failed;
-static uint32_t s_reports_accepted;
-static uint32_t s_reports_rejected;
 
 static void prepare_status(
     uint8_t sequence,
@@ -48,46 +44,6 @@ static void prepare_idle(void)
     }
 }
 
-static uint8_t map_validation_error(esp_err_t error)
-{
-    if (error == ESP_ERR_INVALID_SIZE) {
-        return P4_S3_STATUS_INVALID_LENGTH;
-    }
-    if (error == ESP_ERR_NOT_SUPPORTED) {
-        return P4_S3_STATUS_UNSUPPORTED_REPORT_ID;
-    }
-    if (error == ESP_ERR_NO_MEM) {
-        return P4_S3_STATUS_QUEUE_FULL;
-    }
-    return P4_S3_STATUS_INVALID_INTERFACE;
-}
-
-static void handle_hid_report(const p4_s3_frame_t *received, uint8_t interface_number)
-{
-    const uint8_t sequence = received->raw[P4_S3_OFFSET_SEQUENCE];
-    const uint8_t *report = &received->raw[P4_S3_OFFSET_PAYLOAD];
-    const size_t length = received->raw[P4_S3_OFFSET_LENGTH];
-    uint8_t status = P4_S3_STATUS_OK;
-
-    const esp_err_t validation = g815_report_validate(interface_number, report, length);
-    if (validation != ESP_OK) {
-        status = map_validation_error(validation);
-    } else if (!usb_device_mounted()) {
-        status = P4_S3_STATUS_USB_NOT_MOUNTED;
-    } else {
-        const esp_err_t error = usb_device_report_enqueue(interface_number, report, length);
-        if (error != ESP_OK) {
-            status = map_validation_error(error);
-        }
-    }
-    if (status == P4_S3_STATUS_OK) {
-        ++s_reports_accepted;
-    } else {
-        ++s_reports_rejected;
-    }
-    prepare_simple_status(sequence, status);
-}
-
 static void handle_ota(const p4_s3_frame_t *received)
 {
     p4_s3_ota_status_t status;
@@ -100,6 +56,13 @@ static void handle_ota(const p4_s3_frame_t *received)
         received->raw[P4_S3_OFFSET_SEQUENCE],
         (const uint8_t *)&status,
         (uint8_t)sizeof(status));
+}
+
+static void handle_stats(uint8_t sequence)
+{
+    p4_s3_mirror_stats_t stats;
+    s3_mirror_session_stats(&stats);
+    prepare_status(sequence, (const uint8_t *)&stats, (uint8_t)sizeof(stats));
 }
 
 static void prepare_response(const p4_s3_frame_t *received)
@@ -119,27 +82,38 @@ static void prepare_response(const p4_s3_frame_t *received)
 
     const uint8_t type = received->raw[P4_S3_OFFSET_TYPE];
     const uint8_t sequence = received->raw[P4_S3_OFFSET_SEQUENCE];
+    const uint8_t *payload = &received->raw[P4_S3_OFFSET_PAYLOAD];
+    const uint8_t length = received->raw[P4_S3_OFFSET_LENGTH];
 
     if (p4_s3_is_ota_message(type)) {
         handle_ota(received);
+        return;
+    }
+    if (p4_s3_is_input_message(type)) {
+        prepare_simple_status(
+            sequence,
+            s3_mirror_session_input(
+                (uint8_t)(type - P4_S3_MSG_INPUT_BASE), payload, length));
         return;
     }
     switch (type) {
         case P4_S3_MSG_NOP:
             prepare_idle();
             break;
-        case P4_S3_MSG_G815_IF0_INPUT:
-            handle_hid_report(received, G815_INTERFACE_BOOT_KEYBOARD);
+        case P4_S3_MSG_MIRROR_BEGIN:
+            prepare_simple_status(sequence, s3_mirror_session_begin(payload, length));
             break;
-        case P4_S3_MSG_G815_IF1_INPUT:
-            handle_hid_report(received, G815_INTERFACE_EXTENDED_HID);
+        case P4_S3_MSG_MIRROR_DESCRIPTOR:
+            prepare_simple_status(sequence, s3_mirror_session_descriptor(payload, length));
             break;
-        case P4_S3_MSG_G815_ATTACH:
-            prepare_simple_status(sequence, P4_S3_STATUS_OK);
+        case P4_S3_MSG_MIRROR_COMMIT:
+            prepare_simple_status(sequence, s3_mirror_session_commit());
             break;
-        case P4_S3_MSG_G815_DETACH:
-            usb_device_release_all();
-            prepare_simple_status(sequence, P4_S3_STATUS_OK);
+        case P4_S3_MSG_MIRROR_END:
+            prepare_simple_status(sequence, s3_mirror_session_end());
+            break;
+        case P4_S3_MSG_MIRROR_STATS:
+            handle_stats(sequence);
             break;
         default:
             prepare_simple_status(sequence, P4_S3_STATUS_UNSUPPORTED);

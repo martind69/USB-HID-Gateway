@@ -7,7 +7,7 @@
 #include "analog_vector_io.h"
 #include "capture_log.h"
 #include "diagnostics.h"
-#include "g815_capture.h"
+#include "usb_capture.h"
 #include "gateway_config.h"
 #include "gateway_paths.h"
 #include "gpio_output.h"
@@ -18,6 +18,7 @@
 #include "p4_s3_link.h"
 #include "profile_export.h"
 #include "profile_feedback.h"
+#include "s3_mirror.h"
 #include "s3_ota_manager.h"
 #include "sd_storage.h"
 #include "ssd1306_display.h"
@@ -147,7 +148,7 @@ static void initialize_software_state(void)
     hotkey_init();
     (void)s3_ota_manager_init();
     s3_ota_manager_set_progress_callback(update_s3_ota_display);
-    (void)g815_capture_init();
+    (void)usb_capture_init();
     const esp_err_t error = usb_proxy_control_init();
     if (error != ESP_OK) {
         ESP_LOGE(TAG, "USB proxy control initialization failed: %s",
@@ -247,7 +248,7 @@ static bool initialize_mapping(void)
 
 static bool initialize_link(void)
 {
-    const esp_err_t error = p4_s3_link_init();
+    esp_err_t error = p4_s3_link_init();
     if (error != ESP_OK) {
         ESP_LOGE(TAG, "P4/S3 link initialization failed: %s",
             esp_err_to_name(error));
@@ -256,6 +257,12 @@ static bool initialize_link(void)
     p4_s3_link_start();
     /* Allow startup synchronization before application traffic starts. */
     vTaskDelay(pdMS_TO_TICKS(100U));
+    error = s3_mirror_init();
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "S3 mirror initialization failed: %s",
+            esp_err_to_name(error));
+        return false;
+    }
     ESP_LOGI(TAG, "P4/S3 link initialized");
     return true;
 }

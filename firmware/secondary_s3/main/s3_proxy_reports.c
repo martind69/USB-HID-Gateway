@@ -32,7 +32,7 @@ esp_err_t s3_proxy_reports_init(void)
 }
 
 esp_err_t s3_proxy_send_set_report(
-    uint8_t instance,
+    uint8_t interface_number,
     uint8_t report_id,
     uint8_t report_type,
     const uint8_t *data,
@@ -65,7 +65,7 @@ esp_err_t s3_proxy_send_set_report(
             : remaining;
         p4_s3_fragment_t fragment = {
             .tag = tag,
-            .interface_number = instance,
+            .interface_number = interface_number,
             .report_id = report_id,
             .report_type = report_type,
             .index = index,
@@ -88,6 +88,20 @@ esp_err_t s3_proxy_send_set_report(
             ++s_dropped;
             return ESP_ERR_NO_MEM;
         }
+    }
+    return ESP_OK;
+}
+
+esp_err_t s3_proxy_send_event(uint8_t type)
+{
+    if (s_frames == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    p4_s3_frame_t frame;
+    p4_s3_frame_build(&frame, type, 0U, NULL, 0U);
+    if (xQueueSend(s_frames, &frame, 0U) != pdPASS) {
+        ++s_dropped;
+        return ESP_ERR_NO_MEM;
     }
     return ESP_OK;
 }
