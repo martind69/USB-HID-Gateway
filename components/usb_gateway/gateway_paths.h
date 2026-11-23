@@ -6,12 +6,14 @@
  *     /sdcard/config/      all JSON configuration files
  *     /sdcard/motion/      binary profile caches
  *     /sdcard/captures/    USB capture sessions
+ *     /sdcard/logs/        event log (CAPTURE_LEVEL_SD)
  */
 
 #define GATEWAY_SD_ROOT                 "/sdcard"
 
 #define GATEWAY_CONFIG_DIR              GATEWAY_SD_ROOT "/config"
 #define GATEWAY_CONFIG_FILE             GATEWAY_CONFIG_DIR "/gateway.json"
+#define GATEWAY_OUTPUT_CONFIG_FILE      GATEWAY_CONFIG_DIR "/output.json"
 #define GATEWAY_PROFILE_JSON_FILE       GATEWAY_CONFIG_DIR "/profile-01.json"
 
 #define GATEWAY_MOTION_DIR              GATEWAY_SD_ROOT "/motion"

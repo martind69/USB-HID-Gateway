@@ -4,7 +4,6 @@
 
 #include "diagnostics.h"
 #include "gateway_config.h"
-#include "hid_proxy.h"
 #include "usb_host_control_bridge.h"
 #include "usb_mirror_descriptor.h"
 #include "usb_mirror_device.h"
@@ -115,8 +114,6 @@ void usb_device_init(void)
         diagnostics_set_device_state(DIAG_STATE_ERROR, error);
         return;
     }
-    /* The semantic composite output is replaced by the mirror. */
-    hid_proxy_set_output_enabled(false);
     s_ready = true;
     diagnostics_set_device_state(DIAG_STATE_READY, ESP_OK);
 }

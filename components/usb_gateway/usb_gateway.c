@@ -4,29 +4,32 @@
 #include <stdio.h>
 
 #include "analog_control_gpio.h"
+#include "analog_engine.h"
 #include "analog_vector_io.h"
 #include "capture_log.h"
 #include "diagnostics.h"
-#include "usb_capture.h"
 #include "gateway_config.h"
 #include "gateway_paths.h"
 #include "gpio_output.h"
-#include "hid_proxy.h"
 #include "hotkey.h"
-#include "mapping.h"
 #include "motion_profile_cache.h"
+#include "motion_profile_defaults.h"
+#include "output_config.h"
 #include "p4_s3_link.h"
 #include "profile_export.h"
 #include "profile_feedback.h"
+#include "report_tap.h"
 #include "s3_mirror.h"
 #include "s3_ota_manager.h"
 #include "sd_storage.h"
 #include "ssd1306_display.h"
+#include "usb_capture.h"
 #include "usb_device.h"
 #include "usb_host.h"
 #include "usb_proxy_control.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
@@ -34,10 +37,16 @@
 static const char *TAG = "usb_gateway";
 
 static analog_vector_io_t s_analog;
+static bool s_analog_available;
 static motion_profile_t s_profile;
 static bool s_profile_valid;
 static bool s_last_analog_ok;
+static output_config_t s_output_config;
 static TaskHandle_t s_ota_restore_task;
+
+#if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
+static int64_t s_last_status_us;
+#endif
 
 static void update_display(const char *detail, bool analog_ok);
 
@@ -149,10 +158,14 @@ static void initialize_software_state(void)
     (void)s3_ota_manager_init();
     s3_ota_manager_set_progress_callback(update_s3_ota_display);
     (void)usb_capture_init();
-    const esp_err_t error = usb_proxy_control_init();
+    esp_err_t error = usb_proxy_control_init();
     if (error != ESP_OK) {
         ESP_LOGE(TAG, "USB proxy control initialization failed: %s",
             esp_err_to_name(error));
+    }
+    error = report_tap_init();
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Report tap initialization failed: %s", esp_err_to_name(error));
     }
 }
 
@@ -169,11 +182,12 @@ static void initialize_storage(void)
     }
 }
 
-static void initialize_gateway_config(void)
+static void initialize_configuration(void)
 {
+    output_config_set_defaults(&s_output_config);
     if (!sd_storage_is_mounted()) {
         /* gateway_config_get() provides the default rules when nothing is loaded. */
-        ESP_LOGW(TAG, "No SD card, default port rules active");
+        ESP_LOGW(TAG, "No SD card, default port rules active, task 3 outputs disabled");
         return;
     }
     const esp_err_t storage_error = gateway_config_prepare_storage();
@@ -181,8 +195,9 @@ static void initialize_gateway_config(void)
         ESP_LOGE(TAG, "Config directory unavailable: %s",
             esp_err_to_name(storage_error));
     }
-    /* Errors are logged by gateway_config; defaults stay active. */
+    /* Errors are logged by the parsers; defaults stay active. */
     (void)gateway_config_load(GATEWAY_CONFIG_FILE);
+    (void)output_config_load(GATEWAY_OUTPUT_CONFIG_FILE, &s_output_config);
 }
 
 static bool initialize_analog(void)
@@ -198,6 +213,7 @@ static bool initialize_analog(void)
             esp_err_to_name(error));
     }
     error = analog_vector_io_init(&s_analog);
+    s_analog_available = error == ESP_OK;
     const bool analog_ok = error == ESP_OK || error == ESP_ERR_NOT_SUPPORTED;
     if (!analog_ok) {
         ESP_LOGE(TAG, "Analog initialization failed: %s", esp_err_to_name(error));
@@ -213,11 +229,23 @@ static void initialize_profile(void)
         return;
     }
     bool cache_rebuilt = false;
-    const esp_err_t error = motion_profile_boot_load(
+    esp_err_t error = motion_profile_boot_load(
         GATEWAY_PROFILE_JSON_FILE,
         GATEWAY_PROFILE_CACHE_FILE,
         &s_profile,
         &cache_rebuilt);
+    if (error == ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "No profile on SD card, creating default profile");
+        error = motion_profile_create_default_file(GATEWAY_PROFILE_JSON_FILE, &s_profile);
+        if (error == ESP_OK) {
+            /* Builds the binary cache from the new JSON file. */
+            error = motion_profile_boot_load(
+                GATEWAY_PROFILE_JSON_FILE,
+                GATEWAY_PROFILE_CACHE_FILE,
+                &s_profile,
+                &cache_rebuilt);
+        }
+    }
     if (error != ESP_OK) {
         ESP_LOGW(TAG, "Profile unavailable: %s", esp_err_to_name(error));
         return;
@@ -232,18 +260,6 @@ static void initialize_profile(void)
         ESP_LOGW(TAG, "Profile export initialization failed: %s",
             esp_err_to_name(export_error));
     }
-}
-
-static bool initialize_mapping(void)
-{
-    const mapping_config_t config = { 0 };
-    if (mapping_set_config(&config) != MAPPING_OK) {
-        diagnostics_set_proxy_state(DIAG_STATE_ERROR, ESP_ERR_INVALID_ARG);
-        return false;
-    }
-    mapping_set_event_callback(NULL, NULL);
-    hid_proxy_init();
-    return true;
 }
 
 static bool initialize_link(void)
@@ -275,22 +291,64 @@ static void initialize_display(void)
     }
 }
 
+static void initialize_analog_engine(void)
+{
+    const esp_err_t error = analog_engine_start(
+        &s_analog,
+        s_analog_available,
+        s_profile_valid ? &s_profile : NULL,
+        GATEWAY_PROFILE_JSON_FILE,
+        &s_output_config);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Analog engine start failed: %s", esp_err_to_name(error));
+    }
+}
+
+#if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
+static void log_task3_status(void)
+{
+    const int64_t now = esp_timer_get_time();
+    if ((now - s_last_status_us) <
+        (int64_t)CONFIG_USB_GATEWAY_CAPTURE_DIAG_PERIOD_S * 1000000LL) {
+        return;
+    }
+    s_last_status_us = now;
+    analog_engine_status_t engine;
+    analog_engine_get_status(&engine);
+    report_tap_stats_t tap;
+    report_tap_get_stats(&tap);
+    ESP_LOGI(TAG,
+        "TASK3 mode=%s ticks=%lu overrun=%lu adc_err=%lu dac_err=%lu learned=%llu "
+        "saving=%u save=%s tap_in=%lu tap_ok=%lu tap_drop=%lu tap_undecoded=%lu",
+        engine.mode == ANALOG_ENGINE_GENERATE ? "GENERATE"
+            : engine.mode == ANALOG_ENGINE_LEARN ? "LEARN" : "PASSTHROUGH",
+        (unsigned long)engine.ticks,
+        (unsigned long)engine.overruns,
+        (unsigned long)engine.adc_errors,
+        (unsigned long)engine.dac_errors,
+        (unsigned long long)engine.learned_samples,
+        engine.saving,
+        esp_err_to_name(engine.last_save_result),
+        (unsigned long)tap.submitted,
+        (unsigned long)tap.processed,
+        (unsigned long)tap.dropped,
+        (unsigned long)tap.undecodable);
+}
+#endif
+
 void usb_gateway_init(void)
 {
     initialize_software_state();
     initialize_storage();
-    initialize_gateway_config();
+    initialize_configuration();
     const bool analog_ok = initialize_analog();
     s_last_analog_ok = analog_ok;
     initialize_profile();
-    if (!initialize_mapping()) {
-        ESP_LOGE(TAG, "Mapping initialization failed");
-        return;
-    }
     const bool link_ready = initialize_link();
     initialize_display();
     usb_device_init();
     usb_host_init();
+    initialize_analog_engine();
     diagnostics_set_proxy_state(DIAG_STATE_READY, ESP_OK);
     update_display("READY", analog_ok);
 
@@ -310,8 +368,10 @@ void usb_gateway_process(void)
     usb_host_process();
     usb_device_process();
     hotkey_process();
-    hid_proxy_process();
     diagnostics_process(hotkey_get_mode());
+#if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
+    log_task3_status();
+#endif
 }
 
 void usb_gateway_set_mode(usb_gateway_mode_t mode)

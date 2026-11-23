@@ -6,9 +6,9 @@
 #include <string.h>
 
 #include "diagnostics.h"
-#include "usb_capture.h"
 #include "gateway_config.h"
 #include "s3_mirror.h"
+#include "usb_capture.h"
 #include "usb_device.h"
 #include "usb_host_control_bridge.h"
 #include "usb_host_hid.h"
@@ -288,6 +288,16 @@ static void usb_host_open_device(usb_host_device_slot_t *slot)
     diagnostic_device.vid = device_desc->idVendor;
     diagnostic_device.pid = device_desc->idProduct;
     diagnostic_device.interface_count = config_desc->bNumInterfaces;
+    (void)usb_mirror_string_to_ascii(
+        (const uint8_t *)info.str_desc_manufacturer,
+        diagnostic_device.manufacturer,
+        sizeof(diagnostic_device.manufacturer),
+        NULL);
+    (void)usb_mirror_string_to_ascii(
+        (const uint8_t *)info.str_desc_product,
+        diagnostic_device.product,
+        sizeof(diagnostic_device.product),
+        NULL);
     diagnostics_host_device_added(&diagnostic_device);
 
     assign_device(slot, &info, device_desc, config_desc);

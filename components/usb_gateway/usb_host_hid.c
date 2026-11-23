@@ -3,9 +3,9 @@
 #include <string.h>
 
 #include "diagnostics.h"
-#include "usb_capture.h"
-#include "hid_proxy.h"
+#include "report_tap.h"
 #include "s3_mirror.h"
+#include "usb_capture.h"
 #include "usb_device.h"
 #include "usb_host.h"
 
@@ -37,7 +37,7 @@ typedef struct {
     uint8_t report_descriptor[USB_HOST_HID_MAX_REPORT_DESCRIPTOR_SIZE];
     size_t report_descriptor_length;
     bool descriptor_parsed;
-    hid_parser_context_t parser;
+    hid_decoder_layout_t layout;
 } usb_host_hid_interface_t;
 
 typedef struct {
@@ -73,7 +73,6 @@ static usb_host_hid_interface_t *allocate_interface(hid_host_device_handle_t han
             if (s_next_interface_id == 0U) {
                 s_next_interface_id = 1U;
             }
-            hid_parser_init(&interface->parser);
             ++s_interface_count;
             return interface;
         }
@@ -86,7 +85,7 @@ static void release_interface(usb_host_hid_interface_t *interface)
     if (interface == NULL || !interface->active) {
         return;
     }
-    (void)hid_proxy_enqueue_interface_removed(interface->interface_id);
+    report_tap_interface_removed(interface->interface_id);
     if (interface->opened) {
         const esp_err_t error = hid_host_device_close(interface->handle);
         if (error != ESP_OK) {
@@ -134,19 +133,14 @@ static void route_report(
             break;
 
         case GATEWAY_PORT_TARGET_TAP:
-            if (!hid_proxy_enqueue_raw_report(
-                    interface->interface_id,
-                    report,
-                    report_length)) {
-                ESP_LOGW(TAG, "Tap queue full: interface=%u length=%u",
-                    interface->interface_id, (unsigned)report_length);
-            }
             break;
 
         case GATEWAY_PORT_TARGET_NONE:
         default:
-            break;
+            return;
     }
+    /* Task 3: read-only copy, decoded in the report_tap task. */
+    report_tap_submit(interface->interface_id, report, report_length);
 }
 
 static void handle_input_report(usb_host_hid_interface_t *interface)
@@ -224,17 +218,14 @@ static esp_err_t open_interface_once(usb_host_hid_interface_t *interface)
     }
     memcpy(interface->report_descriptor, descriptor, descriptor_length);
     interface->report_descriptor_length = descriptor_length;
-    interface->descriptor_parsed = hid_parser_parse_report(
-        &interface->parser,
+    interface->descriptor_parsed = hid_decoder_parse(
         descriptor,
-        descriptor_length) == HID_PARSER_OK;
-    if (interface->parser.top_level_usage_page == 0U &&
-        interface->params.sub_class == 1U) {
-        interface->parser.top_level_usage_page = 0x01U;
-        interface->parser.top_level_usage =
-            interface->params.proto == 1U
-                ? 0x06U
-                : interface->params.proto == 2U ? 0x02U : 0U;
+        descriptor_length,
+        &interface->layout) == HID_DECODER_OK;
+    if (interface->layout.truncated) {
+        ESP_LOGW(TAG, "addr=%u iface=%u: more than %u input fields, rest ignored",
+            interface->params.addr, interface->params.iface_num,
+            (unsigned)HID_DECODER_MAX_FIELDS);
     }
     diagnostics_report_hid_enum(
         interface->params.addr,
@@ -304,11 +295,13 @@ static void hid_open_worker(void *argument)
             release_interface(interface);
             continue;
         }
-        ESP_LOGI(TAG, "HID open: id=%u addr=%u iface=%u VID=%04X PID=%04X desc=%u parsed=%u",
+        ESP_LOGI(TAG, "HID open: id=%u addr=%u iface=%u VID=%04X PID=%04X desc=%u "
+            "fields=%u decoded=%u",
             interface->interface_id, interface->params.addr,
             interface->params.iface_num, interface->device_info.VID,
             interface->device_info.PID,
             (unsigned)interface->report_descriptor_length,
+            interface->layout.field_count,
             interface->descriptor_parsed);
     }
 }
@@ -395,7 +388,7 @@ bool usb_host_hid_get_interface_info(
                 .descriptor_parsed = interface->descriptor_parsed,
                 .report_descriptor_length = interface->report_descriptor_length,
                 .report_descriptor = interface->report_descriptor,
-                .parser_context = &interface->parser,
+                .layout = &interface->layout,
             };
             return true;
         }

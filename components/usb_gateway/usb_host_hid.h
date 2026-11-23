@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
-#include "hid_parser.h"
+#include "hid_report_decoder.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,7 +14,7 @@ extern "C" {
 #define USB_HOST_HID_MAX_INTERFACES                 8U
 #define USB_HOST_HID_MAX_REPORT_DESCRIPTOR_SIZE     2048U
 
-/* Read-only view of an opened HID interface, used by hid_proxy (task 3 tap). */
+/* Read-only view of an opened HID interface (used by report_tap). */
 typedef struct {
     uint8_t interface_id;
     uint8_t device_address;
@@ -26,7 +26,7 @@ typedef struct {
     bool descriptor_parsed;
     size_t report_descriptor_length;
     const uint8_t *report_descriptor;
-    const hid_parser_context_t *parser_context;
+    const hid_decoder_layout_t *layout;
 } usb_host_hid_interface_info_t;
 
 /*
@@ -34,8 +34,9 @@ typedef struct {
  * Raw input reports are routed by the target assigned in usb_host.c:
  *     p4_fs -> usb_device_mirror_input()   (P4 USB1P1 mirror)
  *     s3    -> s3_mirror_input()           (SPI link to the S3 mirror)
- *     tap   -> hid_proxy                   (task 3 input only)
+ *     tap   -> no PC connection
  *     none  -> dropped
+ * Every routed report (p4_fs, s3, tap) is also copied to report_tap (task 3).
  */
 esp_err_t usb_host_hid_init(void);
 
