@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "analog_control_gpio.h"
 #include "analog_mapping.h"
 #include "gpio_output.h"
 #include "hotkey.h"
@@ -28,6 +27,7 @@
 #define ENGINE_TASK_PRIORITY        12U
 #define SAVE_TASK_STACK             8192U
 #define SAVE_TASK_PRIORITY          3U
+
 #define ESTIMATOR_ALPHA             0.3f
 #define LEARN_MIN_SAMPLES           500U
 #define DEFAULT_SAFE_CODE           2048U
@@ -41,7 +41,6 @@ static const uint8_t TRIGGER_CHANNEL[OUTPUT_TRIGGER_COUNT] = {
 static const char *TAG = "analog_engine";
 
 static analog_vector_io_t *s_io;
-static bool s_io_available;
 static motion_profile_t *s_profile;
 static const char *s_profile_path;
 static output_config_t s_config;
@@ -49,12 +48,14 @@ static output_config_t s_config;
 static volatile bool s_learn_requested;
 static volatile bool s_saving;
 static esp_err_t s_last_save_result = ESP_OK;
-static analog_engine_mode_t s_mode = ANALOG_ENGINE_PASSTHROUGH;
 
+static analog_engine_mode_t s_mode = ANALOG_ENGINE_PASSTHROUGH;
 static uint32_t s_ticks;
 static uint32_t s_overruns;
 static uint32_t s_adc_errors;
 static uint32_t s_dac_errors;
+static uint16_t s_codes[ANALOG_HID_COUNT];
+static bool s_fault_handled;
 
 /* LEARN state */
 static radial_envelope_t s_envelope[OUTPUT_STICK_COUNT];
@@ -76,9 +77,15 @@ static uint16_t safe_code(uint8_t channel)
     return s_profile != NULL ? s_profile->channel[channel].safe_code : DEFAULT_SAFE_CODE;
 }
 
+static bool adc_ready(void)
+{
+    return s_io != NULL && s_io->adc.enabled;
+}
+
+/* Only the interlock state DAC_ACTIVE allows driving the nodes. */
 static void write_dac(uint8_t channel, uint16_t code)
 {
-    if (!s_io_available) {
+    if (analog_interlock_get_state() != ANALOG_INTERLOCK_DAC_ACTIVE) {
         return;
     }
     if (analog_vector_io_write_channel(s_io, (analog_hid_channel_t)channel, code) != ESP_OK) {
@@ -90,20 +97,20 @@ static void write_dac(uint8_t channel, uint16_t code)
 /* PASSTHROUGH / LEARN                                                    */
 /* ---------------------------------------------------------------------- */
 
-static void passthrough(uint16_t codes[ANALOG_HID_COUNT], bool valid[ANALOG_HID_COUNT])
+/* Reads the Hall sensor voltages; the DAC is high-Z in these modes. */
+static void sample_adc(uint16_t codes[ANALOG_HID_COUNT], bool valid[ANALOG_HID_COUNT])
 {
+    const bool ready = adc_ready();
     for (uint8_t channel = 0U; channel < ANALOG_HID_COUNT; ++channel) {
         uint16_t code = 0U;
-        valid[channel] = s_io_available &&
+        valid[channel] = ready &&
             analog_vector_io_read_channel(s_io, (analog_hid_channel_t)channel, &code) == ESP_OK;
-        if (!valid[channel]) {
-            if (s_io_available) {
-                ++s_adc_errors;
-            }
-            code = safe_code(channel);
+        if (valid[channel]) {
+            s_codes[channel] = code;
+        } else if (ready) {
+            ++s_adc_errors;
         }
         codes[channel] = code;
-        write_dac(channel, code);
     }
 }
 
@@ -116,18 +123,23 @@ static void learn_start(uint64_t now_us)
         return;
     }
     *s_backup = *s_profile;
+
     learned_motion_model_reset(&s_profile->learned);
     for (size_t stick = 0U; stick < OUTPUT_STICK_COUNT; ++stick) {
         radial_envelope_reset(&s_envelope[stick], stick_calibration(stick)->safety_factor);
         kinematic_estimator_init(&s_estimator[stick], ESTIMATOR_ALPHA);
     }
     (void)now_us;
+
     s_mode = ANALOG_ENGINE_LEARN;
     profile_feedback_set(PROFILE_FEEDBACK_LEARNING);
     ESP_LOGI(TAG, "Learning started: move both sticks over the full range");
 }
 
-static void learn_sample(const uint16_t codes[ANALOG_HID_COUNT], const bool valid[ANALOG_HID_COUNT], uint64_t now_us)
+static void learn_sample(
+    const uint16_t codes[ANALOG_HID_COUNT],
+    const bool valid[ANALOG_HID_COUNT],
+    uint64_t now_us)
 {
     for (size_t stick = 0U; stick < OUTPUT_STICK_COUNT; ++stick) {
         const uint8_t channel_x = STICK_CHANNEL_X[stick];
@@ -197,6 +209,17 @@ static void learn_stop(void)
     s_backup = NULL;
 }
 
+/* Interlock fault: samples may stem from a disturbed node, never keep them. */
+static void learn_abort(void)
+{
+    if (s_backup != NULL) {
+        *s_profile = *s_backup;
+        free(s_backup);
+        s_backup = NULL;
+    }
+    ESP_LOGW(TAG, "Learning aborted by interlock fault, previous profile restored");
+}
+
 /* ---------------------------------------------------------------------- */
 /* GENERATE                                                               */
 /* ---------------------------------------------------------------------- */
@@ -211,6 +234,7 @@ static void generate_enter(uint64_t now_us)
 {
     input_state_t discard;
     report_tap_take_snapshot(&discard);
+
     for (size_t stick = 0U; stick < OUTPUT_STICK_COUNT; ++stick) {
         s_target[stick] = (motion_vec2_t) { 0 };
         trajectory_generator_init(&s_trajectory[stick], (motion_vec2_t) { 0 }, now_us);
@@ -227,6 +251,7 @@ static void generate(uint64_t now_us, float dt)
     for (size_t stick = 0U; stick < OUTPUT_STICK_COUNT; ++stick) {
         const output_stick_config_t *config = &s_config.stick[stick];
         motion_vec2_t target = s_target[stick];
+
         switch (config->source) {
             case OUTPUT_STICK_SOURCE_MOUSE: {
                 /* Mouse Y grows downwards, stick Y grows forwards. */
@@ -247,6 +272,7 @@ static void generate(uint64_t now_us, float dt)
                 target = (motion_vec2_t) { 0 };
                 break;
         }
+
         s_target[stick] = analog_mapping_unit_circle(target);
         trajectory_generator_set_target(&s_trajectory[stick], s_target[stick]);
         const motion_state2_t state = trajectory_generator_step(
@@ -257,6 +283,7 @@ static void generate(uint64_t now_us, float dt)
             calibration->radial_envelope,
             calibration->safety_factor,
             state.position);
+
         const uint8_t channel_x = STICK_CHANNEL_X[stick];
         const uint8_t channel_y = STICK_CHANNEL_Y[stick];
         write_dac(channel_x, analog_mapping_axis_to_code(
@@ -283,7 +310,7 @@ static void generate(uint64_t now_us, float dt)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Task                                                                   */
+/* Mode and interlock                                                     */
 /* ---------------------------------------------------------------------- */
 
 static analog_engine_mode_t wanted_mode(void)
@@ -294,9 +321,16 @@ static analog_engine_mode_t wanted_mode(void)
     if (s_learn_requested) {
         return ANALOG_ENGINE_LEARN;
     }
-    return hotkey_get_mode() == USB_GATEWAY_MODE_PROXY
+    return hotkey_get_mode() == USB_GATEWAY_MODE_PROXY && analog_interlock_dac_available()
         ? ANALOG_ENGINE_GENERATE
         : ANALOG_ENGINE_PASSTHROUGH;
+}
+
+static analog_interlock_state_t required_interlock(analog_engine_mode_t mode)
+{
+    return mode == ANALOG_ENGINE_GENERATE
+        ? ANALOG_INTERLOCK_DAC_ACTIVE
+        : ANALOG_INTERLOCK_JOYSTICK_ACTIVE;
 }
 
 static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
@@ -304,6 +338,7 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
     if (next == s_mode) {
         return;
     }
+
     if (s_mode == ANALOG_ENGINE_LEARN) {
         learn_stop();
     }
@@ -311,6 +346,7 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
         gpio_output_all_off();
     }
     s_mode = ANALOG_ENGINE_PASSTHROUGH;
+
     if (next == ANALOG_ENGINE_LEARN) {
         if (s_saving) {
             ESP_LOGW(TAG, "Learning refused while the profile is being saved");
@@ -322,9 +358,51 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
         generate_enter(now_us);
         s_mode = ANALOG_ENGINE_GENERATE;
     }
-    ESP_LOGI(TAG, "Mode %s", s_mode == ANALOG_ENGINE_GENERATE ? "GENERATE"
-        : s_mode == ANALOG_ENGINE_LEARN ? "LEARN" : "PASSTHROUGH");
+
+    ESP_LOGI(TAG, "Mode %s", analog_engine_mode_name(s_mode));
 }
+
+/* Drives the interlock to the state required by the current mode. */
+static void apply_interlock(void)
+{
+    const analog_interlock_state_t required = required_interlock(s_mode);
+    if (analog_interlock_get_state() == required) {
+        return;
+    }
+
+    if (required == ANALOG_INTERLOCK_DAC_ACTIVE) {
+        /* Outputs start at the safe codes of the profile. */
+        uint16_t codes[ANALOG_HID_COUNT];
+        for (uint8_t channel = 0U; channel < ANALOG_HID_COUNT; ++channel) {
+            codes[channel] = safe_code(channel);
+        }
+        (void)analog_interlock_enter_dac(codes);
+    } else {
+        (void)analog_interlock_enter_joystick();
+    }
+}
+
+/* Executed once after the interlock latched FAULT. */
+static void handle_fault(void)
+{
+    if (s_fault_handled) {
+        return;
+    }
+    s_fault_handled = true;
+
+    if (s_mode == ANALOG_ENGINE_LEARN) {
+        learn_abort();
+    }
+    gpio_output_all_off();
+    s_learn_requested = false;
+    s_mode = ANALOG_ENGINE_PASSTHROUGH;
+    ESP_LOGE(TAG, "Outputs stopped: interlock fault %s",
+        analog_interlock_fault_name(analog_interlock_get_fault()));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Task                                                                   */
+/* ---------------------------------------------------------------------- */
 
 static void engine_task(void *argument)
 {
@@ -341,11 +419,26 @@ static void engine_task(void *argument)
         if (xTaskDelayUntil(&wake, period) == pdFALSE) {
             ++s_overruns;
         }
+        ++s_ticks;
+
+        if (analog_interlock_get_state() == ANALOG_INTERLOCK_FAULT) {
+            handle_fault();
+            continue;
+        }
+
         const uint64_t now_us = (uint64_t)esp_timer_get_time();
         switch_mode(wanted_mode(), now_us);
+        apply_interlock();
+        analog_interlock_check();
+
+        /* No output and no sampling until the required state is confirmed. */
+        if (analog_interlock_get_state() != required_interlock(s_mode)) {
+            continue;
+        }
+
         switch (s_mode) {
             case ANALOG_ENGINE_LEARN:
-                passthrough(codes, valid);
+                sample_adc(codes, valid);
                 learn_sample(codes, valid, now_us);
                 break;
             case ANALOG_ENGINE_GENERATE:
@@ -353,10 +446,9 @@ static void engine_task(void *argument)
                 break;
             case ANALOG_ENGINE_PASSTHROUGH:
             default:
-                passthrough(codes, valid);
+                sample_adc(codes, valid);
                 break;
         }
-        ++s_ticks;
     }
 }
 
@@ -387,7 +479,6 @@ static void on_key(input_usage_t usage, bool pressed, uint8_t modifiers)
 
 esp_err_t analog_engine_start(
     analog_vector_io_t *io,
-    bool io_available,
     motion_profile_t *profile,
     const char *profile_path,
     const output_config_t *config)
@@ -395,19 +486,12 @@ esp_err_t analog_engine_start(
     if (io == NULL || config == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+
     s_io = io;
-    s_io_available = io_available;
     s_profile = profile;
     s_profile_path = profile_path;
     s_config = *config;
 
-    if (s_io_available) {
-        /* Hall sensors of the physical joystick must be powered for the ADC. */
-        const esp_err_t error = analog_sensor_power_set(true);
-        if (error != ESP_OK) {
-            ESP_LOGW(TAG, "Sensor power on failed: %s", esp_err_to_name(error));
-        }
-    }
     gpio_output_all_off();
     report_tap_set_edge_handler(on_key);
 
@@ -415,9 +499,13 @@ esp_err_t analog_engine_start(
             ENGINE_TASK_PRIORITY, NULL) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "Analog engine started: tick=%lu ms, ADC/DAC=%s, profile=%s, output.json=%s",
+
+    ESP_LOGI(TAG,
+        "Analog engine started: tick=%lu ms, ADC=%s, DAC=%s, interlock=%s, profile=%s, output.json=%s",
         (unsigned long)s_config.tick_ms,
-        s_io_available ? "yes" : "no",
+        adc_ready() ? "yes" : "no",
+        analog_interlock_dac_available() ? "yes" : "no (PASSTHROUGH only)",
+        analog_interlock_state_name(analog_interlock_get_state()),
         s_profile != NULL ? "yes" : "no (PASSTHROUGH only)",
         s_config.from_file ? "yes" : "no");
     return ESP_OK;
@@ -429,6 +517,10 @@ void analog_engine_request_learning(bool start)
         ESP_LOGW(TAG, "Learning requires a valid profile");
         return;
     }
+    if (start && analog_interlock_get_state() == ANALOG_INTERLOCK_FAULT) {
+        ESP_LOGW(TAG, "Learning refused: interlock fault");
+        return;
+    }
     s_learn_requested = start;
     ESP_LOGI(TAG, "Learning %s requested", start ? "start" : "stop");
 }
@@ -438,8 +530,11 @@ void analog_engine_get_status(analog_engine_status_t *status)
     if (status == NULL) {
         return;
     }
+
     *status = (analog_engine_status_t) {
         .mode = s_mode,
+        .interlock_state = analog_interlock_get_state(),
+        .interlock_fault = analog_interlock_get_fault(),
         .saving = s_saving,
         .ticks = s_ticks,
         .overruns = s_overruns,
@@ -448,4 +543,18 @@ void analog_engine_get_status(analog_engine_status_t *status)
         .learned_samples = s_profile != NULL ? s_profile->learned.total_samples : 0U,
         .last_save_result = s_last_save_result,
     };
+    memcpy(status->adc_code, s_codes, sizeof(status->adc_code));
+}
+
+const char *analog_engine_mode_name(analog_engine_mode_t mode)
+{
+    switch (mode) {
+        case ANALOG_ENGINE_GENERATE:
+            return "GENERATE";
+        case ANALOG_ENGINE_LEARN:
+            return "LEARN";
+        case ANALOG_ENGINE_PASSTHROUGH:
+        default:
+            return "PASSTHROUGH";
+    }
 }

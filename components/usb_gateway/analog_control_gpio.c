@@ -3,45 +3,59 @@
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 
-#ifndef CONFIG_USB_GATEWAY_ANALOG_POWER_OPEN_DRAIN
-#define CONFIG_USB_GATEWAY_ANALOG_POWER_OPEN_DRAIN 0
+#ifndef CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN
+#define CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN 0
 #endif
 
-#ifndef CONFIG_USB_GATEWAY_ANALOG_POWER_ACTIVE_LOW
-#define CONFIG_USB_GATEWAY_ANALOG_POWER_ACTIVE_LOW 0
+#ifndef CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW
+#define CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW 0
 #endif
 
-static int output_level(bool enabled)
+#define JOYSTICK_ENABLE_GPIO    ((gpio_num_t)CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_GPIO)
+
+static bool s_initialized;
+
+static int level_for(bool enabled)
 {
-    return enabled != CONFIG_USB_GATEWAY_ANALOG_POWER_ACTIVE_LOW
-        ? 1
-        : 0;
+    return enabled != (CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW != 0) ? 1 : 0;
 }
 
 esp_err_t analog_control_gpio_init(void)
 {
-    const gpio_config_t config = {
-        .pin_bit_mask = 1ULL << CONFIG_USB_GATEWAY_ANALOG_POWER_GPIO,
-        .mode = CONFIG_USB_GATEWAY_ANALOG_POWER_OPEN_DRAIN
-            ? GPIO_MODE_OUTPUT_OD
-            : GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-
-    esp_err_t error = gpio_config(&config);
+    /* Latch the inactive level before the pad becomes an output. */
+    esp_err_t error = gpio_set_level(JOYSTICK_ENABLE_GPIO, level_for(false));
     if (error != ESP_OK) {
         return error;
     }
 
-    /* Required default: push-pull, low, active-high. */
-    return analog_sensor_power_set(false);
+    const gpio_config_t config = {
+        .pin_bit_mask = 1ULL << CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_GPIO,
+        .mode = CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN
+            ? GPIO_MODE_INPUT_OUTPUT_OD
+            : GPIO_MODE_INPUT_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    error = gpio_config(&config);
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    s_initialized = true;
+    return gpio_set_level(JOYSTICK_ENABLE_GPIO, level_for(false));
 }
 
-esp_err_t analog_sensor_power_set(bool enabled)
+esp_err_t analog_joystick_enable_set(bool enabled)
 {
-    return gpio_set_level(
-        CONFIG_USB_GATEWAY_ANALOG_POWER_GPIO,
-        output_level(enabled));
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return gpio_set_level(JOYSTICK_ENABLE_GPIO, level_for(enabled));
+}
+
+bool analog_joystick_enable_readback(void)
+{
+    const int level = gpio_get_level(JOYSTICK_ENABLE_GPIO);
+    return (level != 0) != (CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW != 0);
 }

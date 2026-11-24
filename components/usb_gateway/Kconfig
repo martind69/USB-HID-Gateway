@@ -1,73 +1,134 @@
 menu "USB HID Gateway"
+
 config USB_GATEWAY_ADS7128_ENABLE
     bool "Enable ADS7128"
     default y
+
 config USB_GATEWAY_DAC7578_ENABLE
     bool "Enable DAC7578"
     default y
+
 config USB_GATEWAY_ANALOG_I2C_SDA
     int "Analog I2C SDA GPIO"
-    default 32
+    default 33
+
 config USB_GATEWAY_ANALOG_I2C_SCL
     int "Analog I2C SCL GPIO"
-    default 33
+    default 32
+
 config USB_GATEWAY_ANALOG_I2C_FREQ_HZ
     int "Analog I2C clock in Hz"
     range 100000 1000000
     default 1000000
+
 config USB_GATEWAY_STATUS_LEDS_ENABLE
     bool "Enable status LEDs"
     default y
+
 config USB_GATEWAY_STATUS_LED_BUSY_GPIO
     int "Busy LED GPIO"
     default 1
+
 config USB_GATEWAY_STATUS_LED_OK_GPIO
     int "Success LED GPIO"
     default 2
+
 config USB_GATEWAY_STATUS_LED_ERROR_GPIO
     int "Error LED GPIO"
     default 3
+
 config USB_GATEWAY_STATUS_LED_BUSY_ACTIVE_LOW
     bool "Busy LED active-low"
     default n
+
 config USB_GATEWAY_STATUS_LED_OK_ACTIVE_LOW
     bool "Success LED active-low"
     default n
+
 config USB_GATEWAY_STATUS_LED_ERROR_ACTIVE_LOW
     bool "Error LED active-low"
     default n
-config USB_GATEWAY_ANALOG_POWER_GPIO
-    int "Hall/button power GPIO"
-    default 0
-config USB_GATEWAY_ANALOG_POWER_OPEN_DRAIN
-    bool "Hall/button power output is open-drain"
-    default n
-config USB_GATEWAY_ANALOG_POWER_ACTIVE_LOW
-    bool "Hall/button power output is active-low"
-    default n
+
 config USB_GATEWAY_PROFILE_EXPORT_HOTKEY_ENABLE
     bool "Enable profile export hotkey"
     default y
+
 config USB_GATEWAY_PROFILE_EXPORT_HID_USAGE
     hex "Export HID usage"
     default 0x45
+
 config USB_GATEWAY_PROFILE_EXPORT_MODIFIER_MASK
     hex "Export modifier mask"
     default 0x05
+
 endmenu
+
+menu "Joystick enable and analog interlock"
+
+config USB_GATEWAY_JOYSTICK_ENABLE_GPIO
+    int "Joystick enable GPIO (Hall sensor and button supply)"
+    range 0 54
+    default 0
+    help
+        Replaces USB_GATEWAY_ANALOG_POWER_GPIO. PASSTHROUGH: on, GENERATE: off.
+        Use an external resistor to the inactive level, the pad is undefined
+        during reset and bootloader.
+
+config USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW
+    bool "Joystick enable active-low"
+    default n
+
+config USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN
+    bool "Joystick enable output is open-drain"
+    default n
+    help
+        Open-drain needs an external pull-up; the pad level is read back
+        by the interlock.
+
+config USB_GATEWAY_INTERLOCK_GUARD_US
+    int "Guard time between both outputs released and switching on (us)"
+    range 0 100000
+    default 100
+
+config USB_GATEWAY_INTERLOCK_SETTLE_US
+    int "Settling time after joystick supply on, before ADC sampling (us)"
+    range 0 100000
+    default 1000
+
+config USB_GATEWAY_INTERLOCK_OFF_US
+    int "Discharge time after joystick supply off, before DAC power-up (us)"
+    range 0 100000
+    default 1000
+
+config USB_GATEWAY_INTERLOCK_DAC_VERIFY_TICKS
+    int "DAC high-Z read-back period in JOYSTICK_ACTIVE (engine ticks)"
+    range 1 1000
+    default 1
+
+config USB_GATEWAY_INTERLOCK_ADC_VERIFY_MS
+    int "ADS7128 pin configuration read-back period (ms)"
+    range 10 60000
+    default 1000
+
+endmenu
+
 menu "Capture and diagnostics"
+
 config USB_GATEWAY_CAPTURE_ENABLE
     bool "Enable capture (periodic diagnostics on the monitor)"
     default n
     help
         Master switch. Enables the periodic diagnostic report (system, USB,
-        proxy, P4/S3 link, I2C) and the analog bus scan at boot. Event
-        messages such as device attach/detach and errors are always logged.
+        proxy, P4/S3 link, I2C, task 3 incl. ADC codes) and the analog bus
+        scan at boot. Event messages such as device attach/detach and errors
+        are always logged.
+
 config USB_GATEWAY_CAPTURE_DIAG_PERIOD_S
     int "Diagnostic report period in seconds"
     depends on USB_GATEWAY_CAPTURE_ENABLE
     range 1 3600
     default 5
+
 choice USB_GATEWAY_CAPTURE_LEVEL
     prompt "Capture level"
     depends on USB_GATEWAY_CAPTURE_ENABLE
@@ -75,126 +136,169 @@ choice USB_GATEWAY_CAPTURE_LEVEL
     help
         MONITOR: periodic diagnostics on the console only.
         SD: additionally a binary event log under /sdcard/logs, started at boot.
+
 config USB_GATEWAY_CAPTURE_LEVEL_MONITOR
     bool "MONITOR - console diagnostics"
+
 config USB_GATEWAY_CAPTURE_LEVEL_SD
     bool "SD - console diagnostics and SD event log"
+
 endchoice
+
 config USB_GATEWAY_CAPTURE_SD_DURATION_S
     int "SD event log duration in seconds (0 = until size budget)"
     depends on USB_GATEWAY_CAPTURE_LEVEL_SD
     range 0 86400
     default 600
+
 config USB_GATEWAY_CAPTURE_SD_MAX_TOTAL_MIB
     int "SD event log size budget per session in MiB"
     depends on USB_GATEWAY_CAPTURE_LEVEL_SD
     range 1 4096
     default 256
+
 config USB_GATEWAY_CAPTURE_SD_FILE_MIB
     int "SD event log maximum file size in MiB"
     depends on USB_GATEWAY_CAPTURE_LEVEL_SD
     range 1 1024
     default 8
+
 config USB_GATEWAY_CAPTURE_SD_FLUSH_MS
     int "SD event log flush interval in ms"
     depends on USB_GATEWAY_CAPTURE_LEVEL_SD
     range 100 60000
     default 1000
+
 config USB_GATEWAY_CAPTURE_SD_QUEUE_DEPTH
     int "SD event log record queue depth"
     depends on USB_GATEWAY_CAPTURE_LEVEL_SD
     range 16 4096
     default 512
+
 endmenu
+
 menu "Digital outputs"
+
 config USB_GATEWAY_DIGITAL_OUTPUT_ACTIVE_LOW
     bool "Digital outputs active-low"
     default n
+
 config USB_GATEWAY_DIGITAL_OUTPUT_0_GPIO
     int "Digital output 0 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_1_GPIO
     int "Digital output 1 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_2_GPIO
     int "Digital output 2 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_3_GPIO
     int "Digital output 3 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_4_GPIO
     int "Digital output 4 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_5_GPIO
     int "Digital output 5 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_6_GPIO
     int "Digital output 6 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_7_GPIO
     int "Digital output 7 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_8_GPIO
     int "Digital output 8 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_9_GPIO
     int "Digital output 9 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_10_GPIO
     int "Digital output 10 GPIO (-1 disabled)"
     default -1
+
 config USB_GATEWAY_DIGITAL_OUTPUT_11_GPIO
     int "Digital output 11 GPIO (-1 disabled)"
     default -1
+
 endmenu
+
 menu "SD card"
+
 config USB_GATEWAY_SDMMC_CLK_GPIO
     int "SDMMC CLK GPIO"
     default 43
+
 config USB_GATEWAY_SDMMC_CMD_GPIO
     int "SDMMC CMD GPIO"
     default 44
+
 config USB_GATEWAY_SDMMC_D0_GPIO
     int "SDMMC D0 GPIO"
     default 39
+
 config USB_GATEWAY_SDMMC_CD_GPIO
     int "SD card-detect GPIO"
     default 41
+
 config USB_GATEWAY_SDMMC_FREQ_KHZ
     int "SDMMC clock frequency in kHz"
     range 400 40000
     default 20000
+
 config USB_GATEWAY_SD_MAX_FILES
     int "Maximum open SD files"
     default 8
+
 endmenu
+
 menu "P4/S3 status correlation"
+
 config USB_GATEWAY_S3_STATUS_POLL_MS
     int "Status poll interval ms"
     range 1 100
     default 2
+
 config USB_GATEWAY_S3_STATUS_POLL_LIMIT
     int "Maximum status polls per command"
     range 1 100
     default 10
+
 endmenu
+
 menu "P4 to S3 SPI2 bus"
+
 config USB_GATEWAY_S3_SPI_SCLK_GPIO
     int "S3 SPI SCLK GPIO"
     default 6
+
 config USB_GATEWAY_S3_SPI_MOSI_GPIO
     int "S3 SPI MOSI GPIO"
     default 7
+
 config USB_GATEWAY_S3_SPI_MISO_GPIO
     int "S3 SPI MISO GPIO"
     default 8
+
 config USB_GATEWAY_S3_SPI_CS_GPIO
     int "S3 SPI chip-select GPIO"
     default 22
+
 config USB_GATEWAY_S3_SPI_HZ
     int "S3 SPI frequency"
     range 1000000 20000000
     default 10000000
+
 config USB_GATEWAY_S3_REARM_GUARD_US
     int "S3 SPI slave re-arm guard time in microseconds"
     range 50 5000
@@ -203,40 +307,54 @@ config USB_GATEWAY_S3_REARM_GUARD_US
         Delay after a completed or timed-out command before starting the next
         SPI transaction. This gives the ESP32-S3 slave task time to process the
         received frame and queue the next 72-byte transaction.
+
 endmenu
+
 menu "SSD1306 SPI3 bus"
+
 config USB_GATEWAY_SSD1306_ENABLE
     bool "Enable SSD1306 status display"
     default y
+
 config USB_GATEWAY_SSD1306_SCLK_GPIO
     int "SSD1306 SCLK GPIO"
     default 20
+
 config USB_GATEWAY_SSD1306_MOSI_GPIO
     int "SSD1306 MOSI GPIO"
     default 21
+
 config USB_GATEWAY_SSD1306_CS_GPIO
     int "SSD1306 chip-select GPIO"
     default 37
+
 config USB_GATEWAY_SSD1306_DC_GPIO
     int "SSD1306 D/C GPIO"
     default 38
+
 config USB_GATEWAY_SSD1306_RESET_GPIO
     int "SSD1306 reset GPIO"
     default 23
+
 config USB_GATEWAY_SSD1306_SPI_HZ
     int "SSD1306 SPI frequency"
     range 1000000 10000000
     default 10000000
+
 config USB_GATEWAY_SSD1306_CONTRAST
     hex "SSD1306 contrast"
     range 0x01 0xFF
     default 0x7F
+
 config USB_GATEWAY_SSD1306_REFRESH_MS
     int "SSD1306 refresh period ms"
     range 50 2000
     default 200
+
 endmenu
+
 menu "Secondary S3 SPI OTA"
+
 config USB_GATEWAY_S3_OTA_ENABLE
     bool "Enable S3 application update over the P4/S3 SPI link"
     default y
@@ -244,20 +362,25 @@ config USB_GATEWAY_S3_OTA_ENABLE
         Checks for a trigger file on the SD card after the P4/S3 link starts.
         Only the S3 application image is updated. The S3 bootloader and
         partition table remain unchanged.
+
 config USB_GATEWAY_S3_OTA_IMAGE_PATH
     string "S3 application image path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.bin"
+
 config USB_GATEWAY_S3_OTA_VERSION_PATH
     string "S3 image version text path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.version"
+
 config USB_GATEWAY_S3_OTA_TRIGGER_PATH
     string "S3 OTA trigger path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.update"
+
 config USB_GATEWAY_S3_OTA_DONE_PATH
     string "Completed S3 OTA marker path"
     depends on USB_GATEWAY_S3_OTA_ENABLE
     default "/sdcard/firmware/secondary_s3.done"
+
 endmenu

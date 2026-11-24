@@ -2,10 +2,12 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "analog_bus.h"
 #include "analog_control_gpio.h"
 #include "analog_engine.h"
+#include "analog_interlock.h"
 #include "analog_vector_io.h"
 #include "capture_log.h"
 #include "diagnostics.h"
@@ -47,24 +49,29 @@
 static const char *TAG = "usb_gateway";
 
 static analog_vector_io_t s_analog;
-static bool s_analog_available;
 static motion_profile_t s_profile;
 static bool s_profile_valid;
 static bool s_last_analog_ok;
 static output_config_t s_output_config;
 static TaskHandle_t s_ota_restore_task;
+/* Set while the S3 OTA owns the display; cleared 5 s after a confirmed OTA. */
+static volatile bool s_ota_display_hold;
+static ssd1306_status_view_t s_last_view;
+static bool s_last_view_valid;
 static SemaphoreHandle_t s_profile_done;
 #if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
 static int64_t s_last_status_us;
 #endif
 
-static void update_display(const char *detail, bool analog_ok);
+static void refresh_display(void);
 
 static void restore_display_after_ota(void *argument)
 {
     (void)argument;
     vTaskDelay(pdMS_TO_TICKS(5000U));
-    update_display("READY", s_last_analog_ok);
+    s_ota_display_hold = false;
+    s_last_view_valid = false;
+    refresh_display();
     s_ota_restore_task = NULL;
     vTaskDelete(NULL);
 }
@@ -75,7 +82,10 @@ static void update_s3_ota_display(const s3_ota_progress_t *progress)
         return;
     }
 
-    ssd1306_status_view_t view = { 0 };
+    s_ota_display_hold = true;
+
+    ssd1306_status_view_t view;
+    memset(&view, 0, sizeof(view));
     (void)snprintf(view.mode, sizeof(view.mode), "S3 OTA");
     (void)snprintf(view.info_label, sizeof(view.info_label), "VERSION");
     (void)snprintf(
@@ -140,12 +150,13 @@ static void update_s3_ota_display(const s3_ota_progress_t *progress)
 
 static void update_display(const char *detail, bool analog_ok)
 {
-    ssd1306_status_view_t view = { 0 };
+    ssd1306_status_view_t view;
+    memset(&view, 0, sizeof(view));
+
     const char *mode = hotkey_get_mode() == USB_GATEWAY_MODE_PROXY
         ? "PROXY"
         : "PASS";
     const char *profile_name = "NONE";
-
     if (s_profile_valid) {
         profile_name = s_profile.name[0] != '\0' ? s_profile.name : "UNNAMED";
     }
@@ -163,7 +174,43 @@ static void update_display(const char *detail, bool analog_ok)
     view.usb_host_ok = true;
     view.usb_device_ok = true;
     view.analog_ok = analog_ok;
+
+    /* Called every main loop pass: only hand over real changes. */
+    if (s_last_view_valid && memcmp(&view, &s_last_view, sizeof(view)) == 0) {
+        return;
+    }
+    s_last_view = view;
+    s_last_view_valid = true;
     ssd1306_display_set_view(&view);
+}
+
+/* Mode, engine state and interlock state; the S3 OTA view has priority. */
+static void refresh_display(void)
+{
+    if (s_ota_display_hold) {
+        return;
+    }
+
+    analog_engine_status_t engine;
+    analog_engine_get_status(&engine);
+
+    char detail[22];
+    if (engine.interlock_state == ANALOG_INTERLOCK_FAULT) {
+        (void)snprintf(detail, sizeof(detail), "FAULT %s",
+            analog_interlock_fault_name(engine.interlock_fault));
+    } else if (engine.saving) {
+        (void)snprintf(detail, sizeof(detail), "SAVING");
+    } else if (engine.mode == ANALOG_ENGINE_LEARN) {
+        (void)snprintf(detail, sizeof(detail), "LEARNING");
+    } else if (engine.mode == ANALOG_ENGINE_GENERATE) {
+        (void)snprintf(detail, sizeof(detail), "GENERATE");
+    } else {
+        (void)snprintf(detail, sizeof(detail), "READY");
+    }
+
+    update_display(
+        detail,
+        s_last_analog_ok && engine.interlock_state != ANALOG_INTERLOCK_FAULT);
 }
 
 static void initialize_software_state(void)
@@ -227,7 +274,7 @@ static bool initialize_analog(void)
 {
     esp_err_t error = analog_control_gpio_init();
     if (error != ESP_OK) {
-        ESP_LOGE(TAG, "Analog power GPIO initialization failed: %s",
+        ESP_LOGE(TAG, "Joystick enable GPIO initialization failed: %s",
             esp_err_to_name(error));
     }
 
@@ -242,11 +289,18 @@ static bool initialize_analog(void)
 #endif
 
     error = analog_vector_io_init(&s_analog);
-    s_analog_available = error == ESP_OK;
-    const bool analog_ok = error == ESP_OK || error == ESP_ERR_NOT_SUPPORTED;
+    bool analog_ok = error == ESP_OK || error == ESP_ERR_NOT_SUPPORTED;
     if (!analog_ok) {
         ESP_LOGE(TAG, "Analog initialization failed: %s", esp_err_to_name(error));
         profile_feedback_set(PROFILE_FEEDBACK_ANALOG_ERROR);
+    }
+
+    /* DAC high-Z, joystick supply off and ADS7128 inputs confirmed before anything else. */
+    error = analog_interlock_init(&s_analog);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Analog interlock in FAULT: %s",
+            analog_interlock_fault_name(analog_interlock_get_fault()));
+        analog_ok = false;
     }
     return analog_ok;
 }
@@ -357,7 +411,6 @@ static void initialize_analog_engine(void)
 {
     const esp_err_t error = analog_engine_start(
         &s_analog,
-        s_analog_available,
         s_profile_valid ? &s_profile : NULL,
         GATEWAY_PROFILE_JSON_FILE,
         &s_output_config);
@@ -382,10 +435,11 @@ static void log_task3_status(void)
     report_tap_get_stats(&tap);
 
     ESP_LOGI(TAG,
-        "TASK3 mode=%s ticks=%lu overrun=%lu adc_err=%lu dac_err=%lu learned=%llu "
-        "saving=%u save=%s tap_in=%lu tap_ok=%lu tap_drop=%lu tap_undecoded=%lu",
-        engine.mode == ANALOG_ENGINE_GENERATE ? "GENERATE"
-            : engine.mode == ANALOG_ENGINE_LEARN ? "LEARN" : "PASSTHROUGH",
+        "TASK3 mode=%s interlock=%s fault=%s ticks=%lu overrun=%lu adc_err=%lu dac_err=%lu "
+        "learned=%llu saving=%u save=%s tap_in=%lu tap_ok=%lu tap_drop=%lu tap_undecoded=%lu",
+        analog_engine_mode_name(engine.mode),
+        analog_interlock_state_name(engine.interlock_state),
+        analog_interlock_fault_name(engine.interlock_fault),
         (unsigned long)engine.ticks,
         (unsigned long)engine.overruns,
         (unsigned long)engine.adc_errors,
@@ -397,6 +451,12 @@ static void log_task3_status(void)
         (unsigned long)tap.processed,
         (unsigned long)tap.dropped,
         (unsigned long)tap.undecodable);
+    ESP_LOGI(TAG,
+        "ADC LX=%u LY=%u RX=%u RY=%u LT=%u RT=%u L2=%u R2=%u",
+        engine.adc_code[ANALOG_HID_LX], engine.adc_code[ANALOG_HID_LY],
+        engine.adc_code[ANALOG_HID_RX], engine.adc_code[ANALOG_HID_RY],
+        engine.adc_code[ANALOG_HID_LT], engine.adc_code[ANALOG_HID_RT],
+        engine.adc_code[ANALOG_HID_L2], engine.adc_code[ANALOG_HID_R2]);
 }
 #endif
 
@@ -420,7 +480,7 @@ void usb_gateway_init(void)
     initialize_analog_engine();
 
     diagnostics_set_proxy_state(DIAG_STATE_READY, ESP_OK);
-    update_display("READY", analog_ok);
+    refresh_display();
 
     if (link_ready && sd_storage_is_mounted()) {
         const esp_err_t ota_error = s3_ota_manager_start_if_requested();
@@ -439,6 +499,7 @@ void usb_gateway_process(void)
     usb_device_process();
     hotkey_process();
     diagnostics_process(hotkey_get_mode());
+    refresh_display();
 #if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
     log_task3_status();
 #endif

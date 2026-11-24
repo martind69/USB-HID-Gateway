@@ -4,6 +4,7 @@ idf_component_register(
         "analog_bus.c"
         "analog_control_gpio.c"
         "analog_engine.c"
+        "analog_interlock.c"
         "analog_mapping.c"
         "analog_vector_io.c"
         "capture_log.c"
@@ -61,6 +62,7 @@ idf_component_register(
         driver
         esp_driver_i2c
         esp_hw_support
+        esp_rom
         heap
         fatfs
         sdmmc

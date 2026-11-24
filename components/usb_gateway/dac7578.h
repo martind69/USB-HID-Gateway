@@ -10,18 +10,53 @@
 extern "C" {
 #endif
 
-/* DAC7578 8-channel 12-bit DAC. */
+/*
+ * DAC7578 8-channel 12-bit DAC.
+ *
+ * Safety: the outputs share their node with the Hall sensors and the
+ * ADS7128 inputs. dac7578_init() switches all outputs to high-Z right after
+ * the device acknowledges. Power-up is done only by analog_interlock.
+ */
+#define DAC7578_DEFAULT_ADDRESS     0x4CU
+#define DAC7578_ALL_CHANNELS        0xFFU
 
-#define DAC7578_DEFAULT_ADDRESS 0x4CU
+typedef enum {
+    DAC7578_POWER_UP = 0,
+    DAC7578_POWER_DOWN_1K = 1,
+    DAC7578_POWER_DOWN_100K = 2,
+    DAC7578_POWER_DOWN_HIGH_Z = 3,
+} dac7578_power_mode_t;
 
 typedef struct {
     uint8_t address;
     i2c_master_dev_handle_t device;
-    bool enabled;
+    bool enabled;       /* acknowledged on the bus */
 } dac7578_t;
 
-/* Probes the device; ESP_ERR_NOT_FOUND: no acknowledge at address. */
+/*
+ * Probes the device and sets all outputs to high-Z.
+ * ESP_ERR_NOT_FOUND: no acknowledge at address.
+ */
 esp_err_t dac7578_init(dac7578_t *device, uint8_t address);
+
+/* channel_mask: bit n = channel n (A = bit 0 ... H = bit 7). */
+esp_err_t dac7578_set_power(
+    dac7578_t *device,
+    uint8_t channel_mask,
+    dac7578_power_mode_t mode);
+
+/* Raw 16-bit read-back of the power-down register. */
+esp_err_t dac7578_read_power(dac7578_t *device, uint16_t *raw);
+
+/*
+ * Reads the power-down register back and compares mode and channel mask.
+ * ESP_ERR_INVALID_STATE on mismatch; raw (may be NULL) receives the value.
+ */
+esp_err_t dac7578_verify_power(
+    dac7578_t *device,
+    uint8_t channel_mask,
+    dac7578_power_mode_t mode,
+    uint16_t *raw);
 
 esp_err_t dac7578_write_channel(
     dac7578_t *device,
