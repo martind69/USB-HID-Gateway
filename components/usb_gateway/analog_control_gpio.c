@@ -3,36 +3,39 @@
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 
-#ifndef CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN
-#define CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN 0
+#ifndef CONFIG_USB_GATEWAY_GENERATE_LED_GPIO
+#define CONFIG_USB_GATEWAY_GENERATE_LED_GPIO -1
 #endif
 
-#ifndef CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW
-#define CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW 0
+#ifndef CONFIG_USB_GATEWAY_GENERATE_LED_ACTIVE_LOW
+#define CONFIG_USB_GATEWAY_GENERATE_LED_ACTIVE_LOW 0
 #endif
 
-#define JOYSTICK_ENABLE_GPIO    ((gpio_num_t)CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_GPIO)
+#if CONFIG_USB_GATEWAY_GENERATE_LED_GPIO >= 0
+#define GENERATE_LED_GPIO ((gpio_num_t)CONFIG_USB_GATEWAY_GENERATE_LED_GPIO)
 
 static bool s_initialized;
 
-static int level_for(bool enabled)
+static uint32_t level_for(bool on)
 {
-    return enabled != (CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW != 0) ? 1 : 0;
+    return (on != (CONFIG_USB_GATEWAY_GENERATE_LED_ACTIVE_LOW != 0)) ? 1U : 0U;
 }
+#endif
 
 esp_err_t analog_control_gpio_init(void)
 {
-    /* Latch the inactive level before the pad becomes an output. */
-    esp_err_t error = gpio_set_level(JOYSTICK_ENABLE_GPIO, level_for(false));
+#if CONFIG_USB_GATEWAY_GENERATE_LED_GPIO < 0
+    return ESP_OK;
+#else
+    /* Latch "off" before the pad becomes an output. */
+    esp_err_t error = gpio_set_level(GENERATE_LED_GPIO, level_for(false));
     if (error != ESP_OK) {
         return error;
     }
 
     const gpio_config_t config = {
-        .pin_bit_mask = 1ULL << CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_GPIO,
-        .mode = CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN
-            ? GPIO_MODE_INPUT_OUTPUT_OD
-            : GPIO_MODE_INPUT_OUTPUT,
+        .pin_bit_mask = 1ULL << CONFIG_USB_GATEWAY_GENERATE_LED_GPIO,
+        .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
@@ -43,19 +46,17 @@ esp_err_t analog_control_gpio_init(void)
     }
 
     s_initialized = true;
-    return gpio_set_level(JOYSTICK_ENABLE_GPIO, level_for(false));
+    return gpio_set_level(GENERATE_LED_GPIO, level_for(false));
+#endif
 }
 
-esp_err_t analog_joystick_enable_set(bool enabled)
+void analog_generate_led_set(bool on)
 {
-    if (!s_initialized) {
-        return ESP_ERR_INVALID_STATE;
+#if CONFIG_USB_GATEWAY_GENERATE_LED_GPIO >= 0
+    if (s_initialized) {
+        (void)gpio_set_level(GENERATE_LED_GPIO, level_for(on));
     }
-    return gpio_set_level(JOYSTICK_ENABLE_GPIO, level_for(enabled));
-}
-
-bool analog_joystick_enable_readback(void)
-{
-    const int level = gpio_get_level(JOYSTICK_ENABLE_GPIO);
-    return (level != 0) != (CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW != 0);
+#else
+    (void)on;
+#endif
 }

@@ -26,7 +26,7 @@ typedef enum {
 /*
  * ADS7128 + DAC7578 on one node per logical channel:
  *     DAC channel = logical channel, ADC channel = 7 - logical channel.
- * Output enable/disable of the DAC is owned by analog_interlock.
+ * DAC power (high-Z / driving) is owned by analog_engine.
  */
 typedef struct {
     ads7128_t adc;

@@ -17,8 +17,7 @@ extern "C" {
  * therefore never configures a pin as digital output:
  *     - PIN_CFG, GPIO_CFG and GPO_DRIVE_CFG are written with 0 only,
  *       any other value is rejected with ESP_ERR_NOT_ALLOWED
- *     - ads7128_verify_inputs() reads these registers back (used at init and
- *       cyclically by analog_interlock)
+ *     - ads7128_verify_inputs() reads these registers back (init)
  */
 #define ADS7128_DEFAULT_ADDRESS 0x10U
 

@@ -4,16 +4,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "analog_bus.h"
-#include "analog_control_gpio.h"
 #include "analog_engine.h"
-#include "analog_interlock.h"
 #include "analog_vector_io.h"
 #include "capture_log.h"
 #include "diagnostics.h"
 #include "gateway_config.h"
 #include "gateway_paths.h"
-#include "gpio_output.h"
 #include "hotkey.h"
 #include "json_memory.h"
 #include "motion_profile_cache.h"
@@ -22,6 +18,7 @@
 #include "p4_s3_link.h"
 #include "profile_export.h"
 #include "profile_feedback.h"
+#include "report_filter.h"
 #include "report_tap.h"
 #include "s3_mirror.h"
 #include "s3_ota_manager.h"
@@ -54,11 +51,11 @@ static bool s_profile_valid;
 static bool s_last_analog_ok;
 static output_config_t s_output_config;
 static TaskHandle_t s_ota_restore_task;
+static SemaphoreHandle_t s_profile_done;
 /* Set while the S3 OTA owns the display; cleared 5 s after a confirmed OTA. */
 static volatile bool s_ota_display_hold;
 static ssd1306_status_view_t s_last_view;
 static bool s_last_view_valid;
-static SemaphoreHandle_t s_profile_done;
 #if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
 static int64_t s_last_status_us;
 #endif
@@ -184,7 +181,7 @@ static void update_display(const char *detail, bool analog_ok)
     ssd1306_display_set_view(&view);
 }
 
-/* Mode, engine state and interlock state; the S3 OTA view has priority. */
+/* Gateway mode and engine state; the S3 OTA view has priority. */
 static void refresh_display(void)
 {
     if (s_ota_display_hold) {
@@ -195,9 +192,9 @@ static void refresh_display(void)
     analog_engine_get_status(&engine);
 
     char detail[22];
-    if (engine.interlock_state == ANALOG_INTERLOCK_FAULT) {
+    if (engine.fault != ANALOG_OUTPUT_FAULT_NONE) {
         (void)snprintf(detail, sizeof(detail), "FAULT %s",
-            analog_interlock_fault_name(engine.interlock_fault));
+            analog_output_fault_name(engine.fault));
     } else if (engine.saving) {
         (void)snprintf(detail, sizeof(detail), "SAVING");
     } else if (engine.mode == ANALOG_ENGINE_LEARN) {
@@ -210,7 +207,21 @@ static void refresh_display(void)
 
     update_display(
         detail,
-        s_last_analog_ok && engine.interlock_state != ANALOG_INTERLOCK_FAULT);
+        s_last_analog_ok && engine.fault == ANALOG_OUTPUT_FAULT_NONE);
+}
+
+/*
+ * First action after reset: GENERATE LED and GPIO outputs off, I2C bus
+ * recovery, DAC7578 high-Z. Everything else (SD, profile, USB) follows.
+ */
+static bool initialize_analog_early(void)
+{
+    const esp_err_t error = analog_engine_early_init(&s_analog);
+    const bool analog_ok = error == ESP_OK || error == ESP_ERR_NOT_SUPPORTED;
+    if (!analog_ok) {
+        ESP_LOGE(TAG, "Analog initialization failed: %s", esp_err_to_name(error));
+    }
+    return analog_ok;
 }
 
 static void initialize_software_state(void)
@@ -268,41 +279,6 @@ static void initialize_configuration(void)
     /* Errors are logged by the parsers; defaults stay active. */
     (void)gateway_config_load(GATEWAY_CONFIG_FILE);
     (void)output_config_load(GATEWAY_OUTPUT_CONFIG_FILE, &s_output_config);
-}
-
-static bool initialize_analog(void)
-{
-    esp_err_t error = analog_control_gpio_init();
-    if (error != ESP_OK) {
-        ESP_LOGE(TAG, "Joystick enable GPIO initialization failed: %s",
-            esp_err_to_name(error));
-    }
-
-    error = gpio_output_init();
-    if (error != ESP_OK && error != ESP_ERR_NOT_SUPPORTED) {
-        ESP_LOGE(TAG, "Digital output initialization failed: %s",
-            esp_err_to_name(error));
-    }
-
-#if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
-    analog_bus_scan();
-#endif
-
-    error = analog_vector_io_init(&s_analog);
-    bool analog_ok = error == ESP_OK || error == ESP_ERR_NOT_SUPPORTED;
-    if (!analog_ok) {
-        ESP_LOGE(TAG, "Analog initialization failed: %s", esp_err_to_name(error));
-        profile_feedback_set(PROFILE_FEEDBACK_ANALOG_ERROR);
-    }
-
-    /* DAC high-Z, joystick supply off and ADS7128 inputs confirmed before anything else. */
-    error = analog_interlock_init(&s_analog);
-    if (error != ESP_OK) {
-        ESP_LOGE(TAG, "Analog interlock in FAULT: %s",
-            analog_interlock_fault_name(analog_interlock_get_fault()));
-        analog_ok = false;
-    }
-    return analog_ok;
 }
 
 static void load_profile(void)
@@ -433,13 +409,15 @@ static void log_task3_status(void)
     analog_engine_get_status(&engine);
     report_tap_stats_t tap;
     report_tap_get_stats(&tap);
+    report_filter_stats_t filter;
+    report_filter_get_stats(&filter);
 
     ESP_LOGI(TAG,
-        "TASK3 mode=%s interlock=%s fault=%s ticks=%lu overrun=%lu adc_err=%lu dac_err=%lu "
+        "TASK3 mode=%s dac=%s fault=%s ticks=%lu overrun=%lu adc_err=%lu dac_err=%lu "
         "learned=%llu saving=%u save=%s tap_in=%lu tap_ok=%lu tap_drop=%lu tap_undecoded=%lu",
         analog_engine_mode_name(engine.mode),
-        analog_interlock_state_name(engine.interlock_state),
-        analog_interlock_fault_name(engine.interlock_fault),
+        engine.dac_driving ? "DRIVE" : "HIGH-Z",
+        analog_output_fault_name(engine.fault),
         (unsigned long)engine.ticks,
         (unsigned long)engine.overruns,
         (unsigned long)engine.adc_errors,
@@ -452,6 +430,13 @@ static void log_task3_status(void)
         (unsigned long)tap.dropped,
         (unsigned long)tap.undecodable);
     ESP_LOGI(TAG,
+        "FILTER active=%u rules=%u inspected=%lu modified=%lu fail_open=%lu",
+        report_filter_is_active() ? 1U : 0U,
+        (unsigned)report_filter_rule_count(),
+        (unsigned long)filter.inspected,
+        (unsigned long)filter.modified,
+        (unsigned long)filter.fail_open);
+    ESP_LOGI(TAG,
         "ADC LX=%u LY=%u RX=%u RY=%u LT=%u RT=%u L2=%u R2=%u",
         engine.adc_code[ANALOG_HID_LX], engine.adc_code[ANALOG_HID_LY],
         engine.adc_code[ANALOG_HID_RX], engine.adc_code[ANALOG_HID_RY],
@@ -462,13 +447,15 @@ static void log_task3_status(void)
 
 void usb_gateway_init(void)
 {
-    initialize_software_state();
-    initialize_storage();
-    initialize_configuration();
-
-    const bool analog_ok = initialize_analog();
+    const bool analog_ok = initialize_analog_early();
     s_last_analog_ok = analog_ok;
 
+    initialize_software_state();
+    if (!analog_ok) {
+        profile_feedback_set(PROFILE_FEEDBACK_ANALOG_ERROR);
+    }
+    initialize_storage();
+    initialize_configuration();
     initialize_profile();
 
     const bool link_ready = initialize_link();

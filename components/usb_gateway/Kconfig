@@ -63,52 +63,34 @@ config USB_GATEWAY_PROFILE_EXPORT_MODIFIER_MASK
 
 endmenu
 
-menu "Joystick enable and analog interlock"
+menu "GENERATE indicator LED"
 
-config USB_GATEWAY_JOYSTICK_ENABLE_GPIO
-    int "Joystick enable GPIO (Hall sensor and button supply)"
-    range 0 54
+config USB_GATEWAY_GENERATE_LED_GPIO
+    int "GENERATE LED GPIO (-1 = none)"
+    range -1 54
     default 0
     help
-        Replaces USB_GATEWAY_ANALOG_POWER_GPIO. PASSTHROUGH: on, GENERATE: off.
-        Use an external resistor to the inactive level, the pad is undefined
-        during reset and bootloader.
+        LED on while the DAC drives the joystick nodes (mode GENERATE).
+        Replaces USB_GATEWAY_ANALOG_POWER_GPIO. The joystick supply is not
+        switched by the firmware.
 
-config USB_GATEWAY_JOYSTICK_ENABLE_ACTIVE_LOW
-    bool "Joystick enable active-low"
+config USB_GATEWAY_GENERATE_LED_ACTIVE_LOW
+    bool "GENERATE LED active-low"
     default n
 
-config USB_GATEWAY_JOYSTICK_ENABLE_OPEN_DRAIN
-    bool "Joystick enable output is open-drain"
-    default n
+endmenu
+
+menu "Report intercept (M7)"
+
+config USB_GATEWAY_INTERCEPT_ENABLE
+    bool "Neutralize mapped usages in mirrored reports during GENERATE"
+    default y
     help
-        Open-drain needs an external pull-up; the pad level is read back
-        by the interlock.
-
-config USB_GATEWAY_INTERLOCK_GUARD_US
-    int "Guard time between both outputs released and switching on (us)"
-    range 0 100000
-    default 100
-
-config USB_GATEWAY_INTERLOCK_SETTLE_US
-    int "Settling time after joystick supply on, before ADC sampling (us)"
-    range 0 100000
-    default 1000
-
-config USB_GATEWAY_INTERLOCK_OFF_US
-    int "Discharge time after joystick supply off, before DAC power-up (us)"
-    range 0 100000
-    default 1000
-
-config USB_GATEWAY_INTERLOCK_DAC_VERIFY_TICKS
-    int "DAC high-Z read-back period in JOYSTICK_ACTIVE (engine ticks)"
-    range 1 1000
-    default 1
-
-config USB_GATEWAY_INTERLOCK_ADC_VERIFY_MS
-    int "ADS7128 pin configuration read-back period (ms)"
-    range 10 60000
-    default 1000
+        While the DAC drives (GENERATE), every HID usage that output.json
+        maps to a stick, trigger or GPIO is removed from the reports
+        mirrored to the PC. All other data stays byte-identical. Reports
+        that cannot be handled safely are forwarded unchanged (fail-open,
+        counted in the FILTER diagnostic line). Hotkeys are never removed.
 
 endmenu
 
@@ -119,9 +101,9 @@ config USB_GATEWAY_CAPTURE_ENABLE
     default n
     help
         Master switch. Enables the periodic diagnostic report (system, USB,
-        proxy, P4/S3 link, I2C, task 3 incl. ADC codes) and the analog bus
-        scan at boot. Event messages such as device attach/detach and errors
-        are always logged.
+        proxy, P4/S3 link, I2C, task 3 incl. ADC codes and report filter)
+        and the analog bus scan at boot. Event messages such as device
+        attach/detach and errors are always logged.
 
 config USB_GATEWAY_CAPTURE_DIAG_PERIOD_S
     int "Diagnostic report period in seconds"

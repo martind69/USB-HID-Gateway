@@ -14,8 +14,8 @@
  * Power-down data word (DAC7578 data sheet, power-down register):
  *     DB14..DB13  PD1..PD0     00 up, 01 1 kOhm, 10 100 kOhm, 11 high-Z
  *     DB12..DB5   DAC H..A     1 = channel affected
- * The same layout is assumed for the read-back; a different read-back
- * format makes dac7578_verify_power() fail (fail-safe).
+ * The same layout is used for the optional register plausibility check.
+ * A mismatch does not prove that the analog output is not high-impedance.
  */
 #define DAC7578_PD_SHIFT                13U
 #define DAC7578_PD_MASK                 0x3U

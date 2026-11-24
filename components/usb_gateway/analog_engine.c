@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "analog_bus.h"
+#include "analog_control_gpio.h"
 #include "analog_mapping.h"
 #include "gpio_output.h"
 #include "hotkey.h"
@@ -13,11 +15,13 @@
 #include "learned_motion_model.h"
 #include "profile_feedback.h"
 #include "radial_envelope.h"
+#include "report_filter.h"
 #include "report_tap.h"
 #include "trajectory_generator.h"
 #include "usb_gateway.h"
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -31,6 +35,16 @@
 #define ESTIMATOR_ALPHA             0.3f
 #define LEARN_MIN_SAMPLES           500U
 #define DEFAULT_SAFE_CODE           2048U
+
+#if CONFIG_USB_GATEWAY_DAC7578_ENABLE
+#define DAC_FITTED true
+#else
+#define DAC_FITTED false
+#endif
+
+#ifndef CONFIG_USB_GATEWAY_INTERCEPT_ENABLE
+#define CONFIG_USB_GATEWAY_INTERCEPT_ENABLE 0
+#endif
 
 static const uint8_t STICK_CHANNEL_X[OUTPUT_STICK_COUNT] = { ANALOG_HID_LX, ANALOG_HID_RX };
 static const uint8_t STICK_CHANNEL_Y[OUTPUT_STICK_COUNT] = { ANALOG_HID_LY, ANALOG_HID_RY };
@@ -55,7 +69,12 @@ static uint32_t s_overruns;
 static uint32_t s_adc_errors;
 static uint32_t s_dac_errors;
 static uint16_t s_codes[ANALOG_HID_COUNT];
-static bool s_fault_handled;
+
+/* DAC output state */
+static bool s_dac_ready;            /* fitted and acknowledged */
+static bool s_dac_driving;
+static volatile analog_output_fault_t s_fault = ANALOG_OUTPUT_FAULT_NONE;
+static uint16_t s_dac_power_raw;
 
 /* LEARN state */
 static radial_envelope_t s_envelope[OUTPUT_STICK_COUNT];
@@ -82,10 +101,154 @@ static bool adc_ready(void)
     return s_io != NULL && s_io->adc.enabled;
 }
 
-/* Only the interlock state DAC_ACTIVE allows driving the nodes. */
+static bool generate_possible(void)
+{
+    return s_dac_ready && s_profile != NULL && s_fault == ANALOG_OUTPUT_FAULT_NONE;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Reset paths                                                            */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * esp_restart() runs registered shutdown handlers (not on panic, watchdog
+ * or brownout). Best effort, no read-back.
+ */
+static void shutdown_handler(void)
+{
+    report_filter_set_active(false);
+    gpio_output_all_off();
+    analog_generate_led_set(false);
+    if (s_io != NULL && s_io->dac.enabled) {
+        (void)dac7578_set_power(&s_io->dac, DAC7578_ALL_CHANNELS, DAC7578_POWER_DOWN_HIGH_Z);
+    }
+}
+
+esp_err_t analog_engine_early_init(analog_vector_io_t *io)
+{
+    if (io == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_io = io;
+
+    esp_err_t error = analog_control_gpio_init();
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "GENERATE LED initialization failed: %s", esp_err_to_name(error));
+    }
+    error = gpio_output_init();
+    if (error != ESP_OK && error != ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGE(TAG, "Digital output initialization failed: %s", esp_err_to_name(error));
+    }
+    gpio_output_all_off();
+
+    /* Bus recovery, ADS7128 reset (inputs), DAC7578 high-Z. */
+    error = analog_vector_io_init(io);
+
+    const esp_err_t handler_error = esp_register_shutdown_handler(shutdown_handler);
+    if (handler_error != ESP_OK && handler_error != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "Shutdown handler not registered: %s", esp_err_to_name(handler_error));
+    }
+
+#if CONFIG_USB_GATEWAY_CAPTURE_ENABLE
+    analog_bus_scan();
+#endif
+    return error;
+}
+
+/* ---------------------------------------------------------------------- */
+/* DAC output control                                                     */
+/* ---------------------------------------------------------------------- */
+
+static void enter_fault(analog_output_fault_t fault, esp_err_t error)
+{
+    if (s_fault == ANALOG_OUTPUT_FAULT_NONE) {
+        s_fault = fault;
+        ESP_LOGE(TAG, "FAULT %s (%s, DAC power=0x%04X): GENERATE blocked until reset",
+            analog_output_fault_name(fault), esp_err_to_name(error),
+            (unsigned)s_dac_power_raw);
+    }
+    profile_feedback_set(PROFILE_FEEDBACK_ANALOG_ERROR);
+}
+
+/*
+ * Commands all channels to high-Z. The write result is decisive. Read-back is
+ * diagnostic only: it can confirm register plausibility, but not the physical
+ * high-impedance state of the analog output driver.
+ */
+static bool dac_release(void)
+{
+    bool released = true;
+
+    if (s_dac_ready) {
+        const esp_err_t command_error = dac7578_set_power(
+            &s_io->dac, DAC7578_ALL_CHANNELS, DAC7578_POWER_DOWN_HIGH_Z);
+        if (command_error != ESP_OK) {
+            enter_fault(ANALOG_OUTPUT_FAULT_DAC_HIGH_Z, command_error);
+            released = false;
+        } else {
+            const esp_err_t plausibility = dac7578_verify_power(
+                &s_io->dac,
+                DAC7578_ALL_CHANNELS,
+                DAC7578_POWER_DOWN_HIGH_Z,
+                &s_dac_power_raw);
+            if (plausibility == ESP_OK) {
+                ESP_LOGI(TAG,
+                    "HIGH-Z-CMD accepted, register read-back plausible: 0x%04X",
+                    (unsigned)s_dac_power_raw);
+            } else if (plausibility == ESP_ERR_INVALID_STATE) {
+                ESP_LOGW(TAG,
+                    "HIGH-Z-CMD accepted, register read-back differs: 0x%04X "
+                    "(diagnostic only)",
+                    (unsigned)s_dac_power_raw);
+            } else {
+                ESP_LOGW(TAG,
+                    "HIGH-Z-CMD accepted, register read-back unavailable: %s "
+                    "(diagnostic only)",
+                    esp_err_to_name(plausibility));
+            }
+        }
+    }
+
+    if (released) {
+        s_dac_driving = false;
+        analog_generate_led_set(false);
+    }
+    /* Machine no longer follows mouse/keyboard: PC gets the full reports again. */
+    report_filter_set_active(false);
+    return released;
+}
+
+/* Filtering starts first, then safe codes are preloaded and the DAC powered up. */
+static bool dac_drive(void)
+{
+    report_filter_set_active(CONFIG_USB_GATEWAY_INTERCEPT_ENABLE != 0);
+
+    for (uint8_t channel = 0U; channel < ANALOG_HID_COUNT; ++channel) {
+        const esp_err_t error = analog_vector_io_write_channel(
+            s_io, (analog_hid_channel_t)channel, safe_code(channel));
+        if (error != ESP_OK) {
+            enter_fault(ANALOG_OUTPUT_FAULT_DAC_WRITE, error);
+            report_filter_set_active(false);
+            return false;
+        }
+    }
+
+    const esp_err_t error = dac7578_set_power(
+        &s_io->dac, DAC7578_ALL_CHANNELS, DAC7578_POWER_UP);
+    if (error != ESP_OK) {
+        enter_fault(ANALOG_OUTPUT_FAULT_DAC_WRITE, error);
+        report_filter_set_active(false);
+        return false;
+    }
+
+    s_dac_driving = true;
+    analog_generate_led_set(true);
+    return true;
+}
+
 static void write_dac(uint8_t channel, uint16_t code)
 {
-    if (analog_interlock_get_state() != ANALOG_INTERLOCK_DAC_ACTIVE) {
+    if (!s_dac_driving) {
         return;
     }
     if (analog_vector_io_write_channel(s_io, (analog_hid_channel_t)channel, code) != ESP_OK) {
@@ -94,10 +257,57 @@ static void write_dac(uint8_t channel, uint16_t code)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Report filter rules (M7)                                               */
+/* ---------------------------------------------------------------------- */
+
+static void add_rule(input_usage_t usage, unsigned *overflow)
+{
+    if (!report_filter_add_usage(usage)) {
+        ++*overflow;
+    }
+}
+
+/* Every usage that output.json maps to a DAC channel or a GPIO. Hotkeys stay visible. */
+static void build_filter_rules(void)
+{
+    static const input_usage_t MOUSE_X = { HID_PAGE_GENERIC_DESKTOP, HID_USAGE_GD_X };
+    static const input_usage_t MOUSE_Y = { HID_PAGE_GENERIC_DESKTOP, HID_USAGE_GD_Y };
+    unsigned overflow = 0U;
+
+    report_filter_reset();
+    for (size_t stick = 0U; stick < OUTPUT_STICK_COUNT; ++stick) {
+        const output_stick_config_t *config = &s_config.stick[stick];
+        if (config->source == OUTPUT_STICK_SOURCE_MOUSE) {
+            add_rule(MOUSE_X, &overflow);
+            add_rule(MOUSE_Y, &overflow);
+        } else if (config->source == OUTPUT_STICK_SOURCE_KEYS) {
+            add_rule(config->up, &overflow);
+            add_rule(config->down, &overflow);
+            add_rule(config->left, &overflow);
+            add_rule(config->right, &overflow);
+        }
+    }
+    for (size_t trigger = 0U; trigger < OUTPUT_TRIGGER_COUNT; ++trigger) {
+        add_rule(s_config.trigger[trigger], &overflow);
+    }
+    for (uint8_t index = 0U; index < s_config.gpio_count; ++index) {
+        add_rule(s_config.gpio[index].usage, &overflow);
+    }
+
+    if (overflow > 0U) {
+        ESP_LOGE(TAG, "Report filter: %u usage(s) above limit %u not neutralized",
+            overflow, (unsigned)REPORT_FILTER_MAX_USAGES);
+    }
+    ESP_LOGI(TAG, "Report filter: %u mapped usage(s), %s",
+        (unsigned)report_filter_rule_count(),
+        CONFIG_USB_GATEWAY_INTERCEPT_ENABLE ? "neutralized in GENERATE" : "disabled (Kconfig)");
+}
+
+/* ---------------------------------------------------------------------- */
 /* PASSTHROUGH / LEARN                                                    */
 /* ---------------------------------------------------------------------- */
 
-/* Reads the Hall sensor voltages; the DAC is high-Z in these modes. */
+/* Reads the node voltages (Hall sensors, or the DAC in GENERATE). */
 static void sample_adc(uint16_t codes[ANALOG_HID_COUNT], bool valid[ANALOG_HID_COUNT])
 {
     const bool ready = adc_ready();
@@ -114,7 +324,7 @@ static void sample_adc(uint16_t codes[ANALOG_HID_COUNT], bool valid[ANALOG_HID_C
     }
 }
 
-static void learn_start(uint64_t now_us)
+static void learn_start(void)
 {
     s_backup = malloc(sizeof(*s_backup));
     if (s_backup == NULL) {
@@ -129,7 +339,6 @@ static void learn_start(uint64_t now_us)
         radial_envelope_reset(&s_envelope[stick], stick_calibration(stick)->safety_factor);
         kinematic_estimator_init(&s_estimator[stick], ESTIMATOR_ALPHA);
     }
-    (void)now_us;
 
     s_mode = ANALOG_ENGINE_LEARN;
     profile_feedback_set(PROFILE_FEEDBACK_LEARNING);
@@ -209,7 +418,7 @@ static void learn_stop(void)
     s_backup = NULL;
 }
 
-/* Interlock fault: samples may stem from a disturbed node, never keep them. */
+/* DAC fault during learning: samples may stem from a driven node, never keep them. */
 static void learn_abort(void)
 {
     if (s_backup != NULL) {
@@ -217,7 +426,7 @@ static void learn_abort(void)
         free(s_backup);
         s_backup = NULL;
     }
-    ESP_LOGW(TAG, "Learning aborted by interlock fault, previous profile restored");
+    ESP_LOGW(TAG, "Learning aborted by DAC fault, previous profile restored");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -310,27 +519,20 @@ static void generate(uint64_t now_us, float dt)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Mode and interlock                                                     */
+/* Mode                                                                   */
 /* ---------------------------------------------------------------------- */
 
 static analog_engine_mode_t wanted_mode(void)
 {
-    if (s_profile == NULL) {
+    if (s_profile == NULL || s_fault != ANALOG_OUTPUT_FAULT_NONE) {
         return ANALOG_ENGINE_PASSTHROUGH;
     }
     if (s_learn_requested) {
         return ANALOG_ENGINE_LEARN;
     }
-    return hotkey_get_mode() == USB_GATEWAY_MODE_PROXY && analog_interlock_dac_available()
+    return hotkey_get_mode() == USB_GATEWAY_MODE_PROXY && generate_possible()
         ? ANALOG_ENGINE_GENERATE
         : ANALOG_ENGINE_PASSTHROUGH;
-}
-
-static analog_interlock_state_t required_interlock(analog_engine_mode_t mode)
-{
-    return mode == ANALOG_ENGINE_GENERATE
-        ? ANALOG_INTERLOCK_DAC_ACTIVE
-        : ANALOG_INTERLOCK_JOYSTICK_ACTIVE;
 }
 
 static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
@@ -344,6 +546,12 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
     }
     if (s_mode == ANALOG_ENGINE_GENERATE) {
         gpio_output_all_off();
+        if (!dac_release()) {
+            /* DAC state unknown: keep the safe codes on the outputs. */
+            for (uint8_t channel = 0U; channel < ANALOG_HID_COUNT; ++channel) {
+                write_dac(channel, safe_code(channel));
+            }
+        }
     }
     s_mode = ANALOG_ENGINE_PASSTHROUGH;
 
@@ -352,52 +560,28 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
             ESP_LOGW(TAG, "Learning refused while the profile is being saved");
             s_learn_requested = false;
         } else {
-            learn_start(now_us);    /* sets LEARN on success */
+            learn_start();      /* sets LEARN on success */
         }
     } else if (next == ANALOG_ENGINE_GENERATE) {
         generate_enter(now_us);
-        s_mode = ANALOG_ENGINE_GENERATE;
+        if (dac_drive()) {
+            s_mode = ANALOG_ENGINE_GENERATE;
+        } else {
+            (void)dac_release();
+        }
     }
 
     ESP_LOGI(TAG, "Mode %s", analog_engine_mode_name(s_mode));
 }
 
-/* Drives the interlock to the state required by the current mode. */
-static void apply_interlock(void)
-{
-    const analog_interlock_state_t required = required_interlock(s_mode);
-    if (analog_interlock_get_state() == required) {
-        return;
-    }
-
-    if (required == ANALOG_INTERLOCK_DAC_ACTIVE) {
-        /* Outputs start at the safe codes of the profile. */
-        uint16_t codes[ANALOG_HID_COUNT];
-        for (uint8_t channel = 0U; channel < ANALOG_HID_COUNT; ++channel) {
-            codes[channel] = safe_code(channel);
-        }
-        (void)analog_interlock_enter_dac(codes);
-    } else {
-        (void)analog_interlock_enter_joystick();
-    }
-}
-
-/* Executed once after the interlock latched FAULT. */
+/* Executed after a DAC fault while learning. */
 static void handle_fault(void)
 {
-    if (s_fault_handled) {
-        return;
-    }
-    s_fault_handled = true;
-
     if (s_mode == ANALOG_ENGINE_LEARN) {
         learn_abort();
+        s_mode = ANALOG_ENGINE_PASSTHROUGH;
     }
-    gpio_output_all_off();
     s_learn_requested = false;
-    s_mode = ANALOG_ENGINE_PASSTHROUGH;
-    ESP_LOGE(TAG, "Outputs stopped: interlock fault %s",
-        analog_interlock_fault_name(analog_interlock_get_fault()));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -421,20 +605,12 @@ static void engine_task(void *argument)
         }
         ++s_ticks;
 
-        if (analog_interlock_get_state() == ANALOG_INTERLOCK_FAULT) {
+        if (s_fault != ANALOG_OUTPUT_FAULT_NONE) {
             handle_fault();
-            continue;
         }
 
         const uint64_t now_us = (uint64_t)esp_timer_get_time();
         switch_mode(wanted_mode(), now_us);
-        apply_interlock();
-        analog_interlock_check();
-
-        /* No output and no sampling until the required state is confirmed. */
-        if (analog_interlock_get_state() != required_interlock(s_mode)) {
-            continue;
-        }
 
         switch (s_mode) {
             case ANALOG_ENGINE_LEARN:
@@ -443,6 +619,8 @@ static void engine_task(void *argument)
                 break;
             case ANALOG_ENGINE_GENERATE:
                 generate(now_us, dt);
+                /* ADC reads back the driven nodes (diagnostics only). */
+                sample_adc(codes, valid);
                 break;
             case ANALOG_ENGINE_PASSTHROUGH:
             default:
@@ -491,8 +669,18 @@ esp_err_t analog_engine_start(
     s_profile = profile;
     s_profile_path = profile_path;
     s_config = *config;
+    s_dac_ready = DAC_FITTED && io->dac.enabled;
+    s_dac_driving = s_dac_ready;    /* unknown until high-Z is confirmed */
 
     gpio_output_all_off();
+    build_filter_rules();
+
+    /* Start in PASSTHROUGH: DAC released and confirmed, whatever init did before. */
+    if (!dac_release()) {
+        ESP_LOGE(TAG, "HIGH-Z-CMD failed at start (power read-back=0x%04X)",
+            (unsigned)s_dac_power_raw);
+    }
+
     report_tap_set_edge_handler(on_key);
 
     if (xTaskCreate(engine_task, "analog_engine", ENGINE_TASK_STACK, NULL,
@@ -501,11 +689,13 @@ esp_err_t analog_engine_start(
     }
 
     ESP_LOGI(TAG,
-        "Analog engine started: tick=%lu ms, ADC=%s, DAC=%s, interlock=%s, profile=%s, output.json=%s",
+        "Analog engine started: tick=%lu ms, ADC=%s, DAC=%s (power=0x%04X), "
+        "profile=%s, output.json=%s",
         (unsigned long)s_config.tick_ms,
         adc_ready() ? "yes" : "no",
-        analog_interlock_dac_available() ? "yes" : "no (PASSTHROUGH only)",
-        analog_interlock_state_name(analog_interlock_get_state()),
+        !s_dac_ready ? "no (PASSTHROUGH only)"
+            : s_fault != ANALOG_OUTPUT_FAULT_NONE ? "FAULT" : "high-Z",
+        (unsigned)s_dac_power_raw,
         s_profile != NULL ? "yes" : "no (PASSTHROUGH only)",
         s_config.from_file ? "yes" : "no");
     return ESP_OK;
@@ -517,8 +707,8 @@ void analog_engine_request_learning(bool start)
         ESP_LOGW(TAG, "Learning requires a valid profile");
         return;
     }
-    if (start && analog_interlock_get_state() == ANALOG_INTERLOCK_FAULT) {
-        ESP_LOGW(TAG, "Learning refused: interlock fault");
+    if (start && s_fault != ANALOG_OUTPUT_FAULT_NONE) {
+        ESP_LOGW(TAG, "Learning refused: DAC fault");
         return;
     }
     s_learn_requested = start;
@@ -533,8 +723,9 @@ void analog_engine_get_status(analog_engine_status_t *status)
 
     *status = (analog_engine_status_t) {
         .mode = s_mode,
-        .interlock_state = analog_interlock_get_state(),
-        .interlock_fault = analog_interlock_get_fault(),
+        .dac_driving = s_dac_driving,
+        .fault = s_fault,
+        .dac_power_raw = s_dac_power_raw,
         .saving = s_saving,
         .ticks = s_ticks,
         .overruns = s_overruns,
@@ -556,5 +747,19 @@ const char *analog_engine_mode_name(analog_engine_mode_t mode)
         case ANALOG_ENGINE_PASSTHROUGH:
         default:
             return "PASSTHROUGH";
+    }
+}
+
+const char *analog_output_fault_name(analog_output_fault_t fault)
+{
+    switch (fault) {
+        case ANALOG_OUTPUT_FAULT_NONE:
+            return "NONE";
+        case ANALOG_OUTPUT_FAULT_DAC_HIGH_Z:
+            return "HIGH-Z-CMD";
+        case ANALOG_OUTPUT_FAULT_DAC_WRITE:
+            return "DAC-WR";
+        default:
+            return "UNKNOWN";
     }
 }

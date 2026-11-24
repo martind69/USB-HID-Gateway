@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "diagnostics.h"
+#include "report_filter.h"
 #include "report_tap.h"
 #include "s3_mirror.h"
 #include "usb_capture.h"
@@ -45,7 +46,6 @@ typedef struct {
 } hid_open_request_t;
 
 static const char *TAG = "usb_host_hid";
-
 static usb_host_hid_interface_t s_interfaces[USB_HOST_HID_MAX_INTERFACES];
 static QueueHandle_t s_open_queue;
 static uint8_t s_next_interface_id = 1U;
@@ -98,6 +98,13 @@ static void release_interface(usb_host_hid_interface_t *interface)
     }
 }
 
+/*
+ * Order per report:
+ *   1. report_tap gets the original (task 3 must see mapped usages)
+ *   2. mirror copy: mapped usages neutralized while GENERATE is active
+ *      (report_filter, fail-open), unmapped content byte-identical
+ *   3. mirror target p4_fs / s3
+ */
 static void route_report(
     usb_host_hid_interface_t *interface,
     const uint8_t *report,
@@ -105,18 +112,38 @@ static void route_report(
 {
     const uint8_t address = interface->params.addr;
     const uint8_t interface_number = interface->params.iface_num;
+    const gateway_port_target_t target = usb_host_route(address);
 
-    switch (usb_host_route(address)) {
+    if (target == GATEWAY_PORT_TARGET_NONE) {
+        return;
+    }
+
+    /* Task 3: read-only copy of the original, decoded in the report_tap task. */
+    report_tap_submit(interface->interface_id, report, report_length);
+
+    if (target == GATEWAY_PORT_TARGET_TAP) {
+        return;
+    }
+
+    uint8_t mirrored[USB_HOST_HID_REPORT_BUFFER_SIZE];
+    memcpy(mirrored, report, report_length);
+    (void)report_filter_apply(
+        &interface->layout,
+        interface->descriptor_parsed,
+        mirrored,
+        report_length);
+
+    switch (target) {
         case GATEWAY_PORT_TARGET_P4_FS:
-            if (usb_device_mirror_input(address, interface_number, report, report_length)) {
+            if (usb_device_mirror_input(address, interface_number, mirrored, report_length)) {
                 diagnostics_report_proxy_forwarded();
             } else if (usb_device_mirror_connected()) {
                 diagnostics_report_proxy_error(ESP_ERR_NO_MEM);
             }
             break;
-
         case GATEWAY_PORT_TARGET_S3:
             if (usb_capture_is_active()) {
+                /* Capture keeps the original device data. */
                 (void)usb_capture_event(
                     USB_CAPTURE_EVENT_INPUT_REPORT,
                     interface_number,
@@ -127,20 +154,13 @@ static void route_report(
                     ESP_OK);
             }
             /* false while the session is being (re-)sent: report dropped. */
-            if (s3_mirror_input(address, interface_number, report, report_length)) {
+            if (s3_mirror_input(address, interface_number, mirrored, report_length)) {
                 diagnostics_report_proxy_forwarded();
             }
             break;
-
-        case GATEWAY_PORT_TARGET_TAP:
-            break;
-
-        case GATEWAY_PORT_TARGET_NONE:
         default:
-            return;
+            break;
     }
-    /* Task 3: read-only copy, decoded in the report_tap task. */
-    report_tap_submit(interface->interface_id, report, report_length);
 }
 
 static void handle_input_report(usb_host_hid_interface_t *interface)
@@ -157,7 +177,7 @@ static void handle_input_report(usb_host_hid_interface_t *interface)
         ESP_LOGW(TAG, "Cannot copy HID input report: %s", esp_err_to_name(error));
         return;
     }
-    if (report_length == 0U) {
+    if (report_length == 0U || report_length > sizeof(report)) {
         return;
     }
     route_report(interface, report, report_length);
@@ -223,7 +243,8 @@ static esp_err_t open_interface_once(usb_host_hid_interface_t *interface)
         descriptor_length,
         &interface->layout) == HID_DECODER_OK;
     if (interface->layout.truncated) {
-        ESP_LOGW(TAG, "addr=%u iface=%u: more than %u input fields, rest ignored",
+        ESP_LOGW(TAG, "addr=%u iface=%u: more than %u input fields, rest ignored "
+            "(report filter fail-open for this interface)",
             interface->params.addr, interface->params.iface_num,
             (unsigned)HID_DECODER_MAX_FIELDS);
     }
@@ -232,7 +253,6 @@ static esp_err_t open_interface_once(usb_host_hid_interface_t *interface)
         interface->params.iface_num,
         0U,
         (uint16_t)descriptor_length);
-
     /* Both mirrors receive every report descriptor; each keeps its own session. */
     usb_device_mirror_set_report_descriptor(
         interface->params.addr,
@@ -244,7 +264,6 @@ static esp_err_t open_interface_once(usb_host_hid_interface_t *interface)
         interface->params.iface_num,
         descriptor,
         descriptor_length);
-
     if (usb_capture_is_active() &&
         usb_host_route(interface->params.addr) == GATEWAY_PORT_TARGET_S3) {
         const esp_err_t capture_error = usb_capture_write_report_descriptor(

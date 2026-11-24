@@ -13,9 +13,10 @@ extern "C" {
 /*
  * DAC7578 8-channel 12-bit DAC.
  *
- * Safety: the outputs share their node with the Hall sensors and the
- * ADS7128 inputs. dac7578_init() switches all outputs to high-Z right after
- * the device acknowledges. Power-up is done only by analog_interlock.
+ * The outputs share their node with the Hall sensor outputs (about 16 kOhm)
+ * and the ADS7128 inputs. dac7578_init() switches all outputs to high-Z right
+ * after the device acknowledges. Power-up is done only by analog_engine when
+ * entering GENERATE.
  */
 #define DAC7578_DEFAULT_ADDRESS     0x4CU
 #define DAC7578_ALL_CHANNELS        0xFFU
@@ -45,12 +46,17 @@ esp_err_t dac7578_set_power(
     uint8_t channel_mask,
     dac7578_power_mode_t mode);
 
-/* Raw 16-bit read-back of the power-down register. */
+/*
+ * Raw 16-bit register read-back for diagnostics. This does not verify the
+ * physical high-impedance state of the analog outputs.
+ */
 esp_err_t dac7578_read_power(dac7578_t *device, uint16_t *raw);
 
 /*
- * Reads the power-down register back and compares mode and channel mask.
- * ESP_ERR_INVALID_STATE on mismatch; raw (may be NULL) receives the value.
+ * Optional register plausibility check. ESP_ERR_INVALID_STATE means only that
+ * the returned register value differs from the requested mode/channel mask;
+ * it is not evidence that the analog output driver is electrically active.
+ * raw (may be NULL) receives the value.
  */
 esp_err_t dac7578_verify_power(
     dac7578_t *device,

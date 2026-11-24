@@ -9,19 +9,18 @@ extern "C" {
 #endif
 
 /*
- * Joystick enable output (formerly "analog power"): switches the supply of
- * the Hall sensors and buttons of the physical joystick.
+ * GENERATE indicator LED (formerly analog power / joystick enable).
+ * LED on = analog engine in GENERATE (DAC drives the joystick nodes).
  *
- * Pin and polarity: CONFIG_USB_GATEWAY_JOYSTICK_ENABLE_GPIO / _ACTIVE_LOW /
- * _OPEN_DRAIN. The pad is configured as input/output, so the real pad level
- * can be read back. Only analog_interlock may switch this output.
+ * The joystick supply is not switched by the firmware: the Hall outputs are
+ * high-impedance (about 16 kOhm), the DAC7578 overrides them completely.
+ *
+ * Pin and polarity: CONFIG_USB_GATEWAY_GENERATE_LED_GPIO (-1 = none) and
+ * CONFIG_USB_GATEWAY_GENERATE_LED_ACTIVE_LOW.
  */
 esp_err_t analog_control_gpio_init(void);
 
-esp_err_t analog_joystick_enable_set(bool enabled);
-
-/* Pad level interpreted with the configured polarity (true = supply on). */
-bool analog_joystick_enable_readback(void);
+void analog_generate_led_set(bool on);
 
 #ifdef __cplusplus
 }
