@@ -37,7 +37,16 @@ config USB_GATEWAY_STATUS_LED_ERROR_GPIO
     int "Error LED GPIO"
     default 3
 
-config USB_GATEWAY_STATUS_LED_BUSY_ACTIVE_LOW
+config USB_GATEWAY_GENERATE_LED_GPIO
+    int "GENERATE LED GPIO (-1 = none)"
+    range -1 54
+    default 0
+    help
+        LED on while the DAC drives the joystick nodes (mode GENERATE).
+        Replaces USB_GATEWAY_ANALOG_POWER_GPIO. The joystick supply is not
+        switched by the firmware.
+
+    config USB_GATEWAY_STATUS_LED_BUSY_ACTIVE_LOW
     bool "Busy LED active-low"
     default n
 
@@ -47,6 +56,10 @@ config USB_GATEWAY_STATUS_LED_OK_ACTIVE_LOW
 
 config USB_GATEWAY_STATUS_LED_ERROR_ACTIVE_LOW
     bool "Error LED active-low"
+    default n
+
+config USB_GATEWAY_GENERATE_LED_ACTIVE_LOW
+    bool "GENERATE LED active-low"
     default n
 
 config USB_GATEWAY_PROFILE_EXPORT_HOTKEY_ENABLE
@@ -60,23 +73,6 @@ config USB_GATEWAY_PROFILE_EXPORT_HID_USAGE
 config USB_GATEWAY_PROFILE_EXPORT_MODIFIER_MASK
     hex "Export modifier mask"
     default 0x05
-
-endmenu
-
-menu "GENERATE indicator LED"
-
-config USB_GATEWAY_GENERATE_LED_GPIO
-    int "GENERATE LED GPIO (-1 = none)"
-    range -1 54
-    default 0
-    help
-        LED on while the DAC drives the joystick nodes (mode GENERATE).
-        Replaces USB_GATEWAY_ANALOG_POWER_GPIO. The joystick supply is not
-        switched by the firmware.
-
-config USB_GATEWAY_GENERATE_LED_ACTIVE_LOW
-    bool "GENERATE LED active-low"
-    default n
 
 endmenu
 

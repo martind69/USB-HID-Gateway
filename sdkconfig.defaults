@@ -14,7 +14,7 @@ CONFIG_FREERTOS_HZ=1000
 # USB Device (TinyUSB on Full-Speed USB1P1 / H2) & USB Host (High-Speed Hub)
 # =============================================================================
 # Number of TinyUSB HID instances = maximum HID interfaces of the device
-# mirrored on USB1P1 (G502 HERO: 2). Minimum 2, enforced by usb_mirror_device.c.
+# mirrored on USB1P1 (G502 HERO: 2). Minimum 2, enforced by usb_mirror_device.c
 CONFIG_TINYUSB_HID_COUNT=2
 CONFIG_TINYUSB_CDC_COUNT=0
 CONFIG_TINYUSB_MSC_COUNT=0
@@ -22,9 +22,6 @@ CONFIG_TINYUSB_MIDI_COUNT=0
 CONFIG_TINYUSB_AUDIO_COUNT=0
 CONFIG_TINYUSB_VENDOR_COUNT=0
 CONFIG_TINYUSB_NET_MODE_NONE=y
-# Enable support for the onboard CH334F USB hub + external downstream hubs
-CONFIG_USB_HOST_HUBS_SUPPORTED=y
-CONFIG_USB_HOST_HUB_MULTI_LEVEL=y
 # Root port (P4 OTG -> onboard CH334F hub)
 CONFIG_USB_HOST_DEBOUNCE_DELAY_MS=250
 CONFIG_USB_HOST_RESET_HOLD_MS=30
@@ -37,12 +34,15 @@ CONFIG_USB_HOST_SUSPEND_ENTRY_MS=20
 CONFIG_USB_HOST_EXT_PORT_RESET_RECOVERY_DELAY_MS=500
 CONFIG_USB_HOST_EXT_PORT_CUSTOM_POWER_ON_DELAY_ENABLE=y
 CONFIG_USB_HOST_EXT_PORT_CUSTOM_POWER_ON_DELAY_MS=200
+# Enable support for the onboard CH334F USB hub + external downstream hubs
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
+CONFIG_USB_HOST_HUB_MULTI_LEVEL=y
 # =============================================================================
 # Unused Network & Radio Functions
 # =============================================================================
-# Onboard ESP32-C6 wireless coprocessor is isolated and unused.
+# Onboard ESP32-C6 wireless coprocessor is isolated and unused
 # Note: Do NOT set CONFIG_ETH_USE_ESP32_EMAC=n or CONFIG_ETH_USE_OPENETH=n on P4
-# (causes esp_eth_clock.c build failure).
+# (causes esp_eth_clock.c build failure)
 CONFIG_LWIP_PPP_SUPPORT=n
 CONFIG_ESP_MODEM_ENABLE=n
 CONFIG_OPENTHREAD_ENABLED=n
@@ -75,9 +75,6 @@ CONFIG_USB_GATEWAY_SSD1306_ENABLE=y
 CONFIG_USB_GATEWAY_ANALOG_I2C_SDA=33
 CONFIG_USB_GATEWAY_ANALOG_I2C_SCL=32
 CONFIG_USB_GATEWAY_ANALOG_I2C_FREQ_HZ=1000000
-# GENERATE indicator LED (on = DAC drives the joystick nodes)
-CONFIG_USB_GATEWAY_GENERATE_LED_GPIO=0
-CONFIG_USB_GATEWAY_GENERATE_LED_ACTIVE_LOW=n
 # Report intercept (M7): mapped usages removed from mirrored reports in GENERATE
 CONFIG_USB_GATEWAY_INTERCEPT_ENABLE=y
 # SPI link to ESP32-S3
