@@ -1,0 +1,16 @@
+{
+    "schemaVersion": 1,
+    "tickMs": 2,
+    "sticks": {
+        "left":  { "source": "keys", "up": "07:1A", "down": "07:16", "left": "07:04", "right": "07:07" },
+        "right": { "source": "mouse", "gain": 0.004, "returnRate": 4.0 }
+    },
+    "triggers": { "LT": "09:02", "RT": "09:01" },
+    "gpio": [
+        { "usage": "07:2C", "output": 0 }
+    ],
+    "hotkeys": {
+        "mode":  { "modifiers": "05", "usage": "43" },
+        "learn": { "modifiers": "05", "usage": "44" }
+    }
+}

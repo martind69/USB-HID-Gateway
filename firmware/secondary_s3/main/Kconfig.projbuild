@@ -1,0 +1,17 @@
+menu "Secondary S3 link"
+config SECONDARY_S3_SPI_SCLK_GPIO
+    int "SPI SCLK GPIO"
+    default 12
+config SECONDARY_S3_SPI_MOSI_GPIO
+    int "SPI MOSI GPIO"
+    default 11
+config SECONDARY_S3_SPI_MISO_GPIO
+    int "SPI MISO GPIO"
+    default 13
+config SECONDARY_S3_SPI_CS_GPIO
+    int "SPI CS GPIO"
+    default 10
+config SECONDARY_S3_LINK_IRQ_GPIO
+    int "Link IRQ GPIO (reserved, not used yet)"
+    default 9
+endmenu

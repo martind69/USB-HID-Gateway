@@ -1,0 +1,8 @@
+name: host-tests
+on: [push, pull_request]
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cc -std=c17 -Wall -Wextra -Werror -Icomponents/usb_gateway tests/host/test_p4_s3_protocol.c components/usb_gateway/p4_s3_protocol.c -o test && ./test

@@ -1,0 +1,13 @@
+{
+    "schemaVersion": 1,
+    "usb": {
+        "ports": [
+            { "match": { "vid": "046D", "pid": "C33F" }, "target": "s3" },
+            { "match": { "vid": "046D", "pid": "C08B" }, "target": "p4_fs" },
+            { "match": { "class": "keyboard" },          "target": "s3" },
+            { "match": { "class": "mouse" },             "target": "p4_fs" },
+            { "match": { "any": true },                  "target": "none" }
+        ],
+        "intercept": []
+    }
+}

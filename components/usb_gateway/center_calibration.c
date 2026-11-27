@@ -1,0 +1,3 @@
+#include "center_calibration.h"
+#include <math.h>
+void center_calibration_reset(center_calibration_t*c){*c=(center_calibration_t){0};}void center_calibration_add(center_calibration_t*c,motion_vec2_t s){c->sum.x+=s.x;c->sum.y+=s.y;c->count++;}bool center_calibration_finish(center_calibration_t*c,uint32_t n){if(!c->count||c->count<n)return false;c->center.x=c->sum.x/c->count;c->center.y=c->sum.y/c->count;c->valid=true;return true;}motion_vec2_t center_calibration_apply(const center_calibration_t*c,motion_vec2_t s,float dz){motion_vec2_t v={s.x-(c&&c->valid?c->center.x:0),s.y-(c&&c->valid?c->center.y:0)};float r=hypotf(v.x,v.y);if(r<=dz)return(motion_vec2_t){0};float k=(r-dz)/(r*(1-dz));return(motion_vec2_t){v.x*k,v.y*k};}

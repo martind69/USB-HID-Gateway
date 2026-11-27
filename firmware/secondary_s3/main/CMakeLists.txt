@@ -1,0 +1,17 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "s3_mirror_session.c"
+        "s3_ota_receiver.c"
+        "s3_proxy_reports.c"
+        "spi_link.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        usb_mirror
+        driver
+        esp_timer
+        app_update
+        esp_partition
+        esp_app_format
+)

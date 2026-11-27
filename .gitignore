@@ -1,9 +1,15 @@
 build/
+**/build/
+managed_components/
+**/managed_components/
 sdkconfig
 sdkconfig.old
-dependencies.lock
+**/sdkconfig
+**/sdkconfig.old
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
 .DS_Store
+.fulltree.txt
 Thumbs.db
+# Keep dependencies.lock under version control for reproducible managed components.

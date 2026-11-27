@@ -1,5 +1,37 @@
 {
+    "idf.buildPath": "${workspaceFolder}/build/default",
+    "idf.sdkconfigFilePath": "${workspaceFolder}/build/default/sdkconfig",
+    "idf.sdkconfigDefaults": [
+        "sdkconfig.defaults"
+    ],
+    "idf.adapterTargetName": "esp32p4",
 	"editor.insertSpaces": false,
 	"editor.tabSize": 4,
-	"files.trimTrailingWhitespace": true
+	"files.trimTrailingWhitespace": true,
+  "idf.currentSetup": "C:\\Tools\\Espressif\\esp-idf",
+  "clangd.path": "C:\\Tools\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=d:\\Software\\USB-HID-Gateway\\build\\default"
+  ],
+  "idf.port": "COM5",
+  "idf.flashType": "UART",
+  "idf.monitorPort": "COM5",
+  "idf.openOcdConfigs": [
+    "board/esp32p4-builtin.cfg"
+  ],
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32p4"
+  },
+  "cmake.generator": "Ninja",
+  "cmake.configureArgs": [
+      "-DCMAKE_TOOLCHAIN_FILE=C:/Tools/Espressif/esp-idf/tools/cmake/toolchain-esp32p4.cmake",
+      "-DIDF_TARGET=esp32p4"
+  ],
+  "cmake.configureEnvironment": {
+      "PATH": "C:\\Tools\\Espressif\\tools\\riscv32-esp-elf\\esp-16.1.0_20260609\\riscv32-esp-elf\\bin;C:\\Tools\\Espressif\\tools\\xtensa-esp-elf\\esp-16.1.0_20260609\\xtensa-esp-elf\\bin;%PATH%",
+      "IDF_PATH": "C:\\Tools\\Espressif\\esp-idf",
+      "IDF_TOOLS_PATH": "C:\\Tools\\Espressif"
+  }
 }
