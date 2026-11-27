@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <stdbool.h>
@@ -7,6 +8,7 @@
 #include "esp_err.h"
 #include "motion_profile_storage.h"
 #include "output_config.h"
+#include "sdkconfig.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +47,9 @@ typedef enum {
     ANALOG_ENGINE_PASSTHROUGH = 0,
     ANALOG_ENGINE_LEARN = 1,
     ANALOG_ENGINE_GENERATE = 2,
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    ANALOG_ENGINE_SIMULATE = 3,
+#endif
 } analog_engine_mode_t;
 
 typedef enum {

@@ -1,3 +1,4 @@
+
 #include "usb_gateway.h"
 
 #include <stdbool.h>
@@ -150,9 +151,7 @@ static void update_display(const char *detail, bool analog_ok)
     ssd1306_status_view_t view;
     memset(&view, 0, sizeof(view));
 
-    const char *mode = hotkey_get_mode() == USB_GATEWAY_MODE_PROXY
-        ? "PROXY"
-        : "PASS";
+    const char *mode = hotkey_mode_name(hotkey_get_mode());
     const char *profile_name = "NONE";
     if (s_profile_valid) {
         profile_name = s_profile.name[0] != '\0' ? s_profile.name : "UNNAMED";
@@ -201,6 +200,10 @@ static void refresh_display(void)
         (void)snprintf(detail, sizeof(detail), "LEARNING");
     } else if (engine.mode == ANALOG_ENGINE_GENERATE) {
         (void)snprintf(detail, sizeof(detail), "GENERATE");
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    } else if (engine.mode == ANALOG_ENGINE_SIMULATE) {
+        (void)snprintf(detail, sizeof(detail), "SIM 2HZ");
+#endif
     } else {
         (void)snprintf(detail, sizeof(detail), "READY");
     }

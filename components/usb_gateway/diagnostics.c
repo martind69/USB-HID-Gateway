@@ -1,3 +1,4 @@
+
 #include "diagnostics.h"
 
 #include <limits.h>
@@ -313,7 +314,11 @@ void diagnostics_process(usb_gateway_mode_t mode)
     }
     ESP_LOGI(TAG,
         "PROXY mode=%s state=%s forwarded=%lu processed=%lu errors=%lu last_error=%d",
-        mode == USB_GATEWAY_MODE_PASSTHROUGH ? "PASSTHROUGH" : "PROXY",
+        mode == USB_GATEWAY_MODE_PASSTHROUGH ? "PASSTHROUGH"
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+            : mode == USB_GATEWAY_MODE_SIMULATE ? "SIMULATE"
+#endif
+            : "PROXY",
         state_name(s_proxy.state),
         (unsigned long)s_proxy_forwarded,
         (unsigned long)s_proxy_processed,

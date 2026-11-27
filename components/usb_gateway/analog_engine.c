@@ -1,3 +1,4 @@
+
 #include "analog_engine.h"
 
 #include <math.h>
@@ -35,6 +36,10 @@
 #define ESTIMATOR_ALPHA             0.3f
 #define LEARN_MIN_SAMPLES           500U
 #define DEFAULT_SAFE_CODE           2048U
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+#define SIMULATE_FREQUENCY_HZ        2.0f
+#define SIMULATE_TWO_PI              6.28318530718f
+#endif
 
 #if CONFIG_USB_GATEWAY_DAC7578_ENABLE
 #define DAC_FITTED true
@@ -219,9 +224,10 @@ static bool dac_release(void)
 }
 
 /* Filtering starts first, then safe codes are preloaded and the DAC powered up. */
-static bool dac_drive(void)
+static bool dac_drive(bool intercept_reports)
 {
-    report_filter_set_active(CONFIG_USB_GATEWAY_INTERCEPT_ENABLE != 0);
+    report_filter_set_active(
+        intercept_reports && CONFIG_USB_GATEWAY_INTERCEPT_ENABLE != 0);
 
     for (uint8_t channel = 0U; channel < ANALOG_HID_COUNT; ++channel) {
         const esp_err_t error = analog_vector_io_write_channel(
@@ -518,6 +524,56 @@ static void generate(uint64_t now_us, float dt)
     }
 }
 
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+/*
+ * Direct DAC test independent of HID input and learned motion data.
+ * The configured key stick uses one DAC output per axis, not one per key:
+ *     left/right (A/D) -> stick X
+ *     up/down (W/S)    -> stick Y
+ * The configured mouse stick uses its X/Y DAC outputs for sine/cosine.
+ */
+static float simulate_phase(uint64_t now_us)
+{
+    const uint64_t period_us =
+        (uint64_t)(1000000.0f / SIMULATE_FREQUENCY_HZ);
+    return (float)(now_us % period_us) / (float)period_us;
+}
+
+static void simulate(uint64_t now_us)
+{
+    const float phase = simulate_phase(now_us);
+    const float angle = SIMULATE_TWO_PI * phase;
+    const float sine = sinf(angle);
+    const float cosine = cosf(angle);
+    const float rising_saw = 2.0f * phase - 1.0f;
+    const float falling_saw = 1.0f - 2.0f * phase;
+
+    for (size_t stick = 0U; stick < OUTPUT_STICK_COUNT; ++stick) {
+        const output_stick_config_t *config = &s_config.stick[stick];
+        const motion_stick_calibration_t *calibration = stick_calibration(stick);
+        const uint8_t channel_x = STICK_CHANNEL_X[stick];
+        const uint8_t channel_y = STICK_CHANNEL_Y[stick];
+
+        float x = 0.0f;
+        float y = 0.0f;
+        if (config->source == OUTPUT_STICK_SOURCE_MOUSE) {
+            x = sine;
+            y = cosine;
+        } else if (config->source == OUTPUT_STICK_SOURCE_KEYS) {
+            x = rising_saw;
+            y = falling_saw;
+        } else {
+            continue;
+        }
+
+        write_dac(channel_x, analog_mapping_axis_to_code(
+            &calibration->x, x, s_profile->channel[channel_x].invert));
+        write_dac(channel_y, analog_mapping_axis_to_code(
+            &calibration->y, y, s_profile->channel[channel_y].invert));
+    }
+}
+#endif
+
 /* ---------------------------------------------------------------------- */
 /* Mode                                                                   */
 /* ---------------------------------------------------------------------- */
@@ -530,7 +586,15 @@ static analog_engine_mode_t wanted_mode(void)
     if (s_learn_requested) {
         return ANALOG_ENGINE_LEARN;
     }
-    return hotkey_get_mode() == USB_GATEWAY_MODE_PROXY && generate_possible()
+    const usb_gateway_mode_t gateway_mode = hotkey_get_mode();
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    if (gateway_mode == USB_GATEWAY_MODE_SIMULATE) {
+        return generate_possible()
+            ? ANALOG_ENGINE_SIMULATE
+            : ANALOG_ENGINE_PASSTHROUGH;
+    }
+#endif
+    return gateway_mode == USB_GATEWAY_MODE_PROXY && generate_possible()
         ? ANALOG_ENGINE_GENERATE
         : ANALOG_ENGINE_PASSTHROUGH;
 }
@@ -544,7 +608,11 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
     if (s_mode == ANALOG_ENGINE_LEARN) {
         learn_stop();
     }
-    if (s_mode == ANALOG_ENGINE_GENERATE) {
+    if (s_mode == ANALOG_ENGINE_GENERATE
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+        || s_mode == ANALOG_ENGINE_SIMULATE
+#endif
+    ) {
         gpio_output_all_off();
         if (!dac_release()) {
             /* DAC state unknown: keep the safe codes on the outputs. */
@@ -564,11 +632,19 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
         }
     } else if (next == ANALOG_ENGINE_GENERATE) {
         generate_enter(now_us);
-        if (dac_drive()) {
+        if (dac_drive(true)) {
             s_mode = ANALOG_ENGINE_GENERATE;
         } else {
             (void)dac_release();
         }
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    } else if (next == ANALOG_ENGINE_SIMULATE) {
+        if (dac_drive(false)) {
+            s_mode = ANALOG_ENGINE_SIMULATE;
+        } else {
+            (void)dac_release();
+        }
+#endif
     }
 
     ESP_LOGI(TAG, "Mode %s", analog_engine_mode_name(s_mode));
@@ -622,6 +698,13 @@ static void engine_task(void *argument)
                 /* ADC reads back the driven nodes (diagnostics only). */
                 sample_adc(codes, valid);
                 break;
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+            case ANALOG_ENGINE_SIMULATE:
+                simulate(now_us);
+                /* ADC reads back the direct DAC test waveforms. */
+                sample_adc(codes, valid);
+                break;
+#endif
             case ANALOG_ENGINE_PASSTHROUGH:
             default:
                 sample_adc(codes, valid);
@@ -645,11 +728,17 @@ static void on_key(input_usage_t usage, bool pressed, uint8_t modifiers)
         return;
     }
     if (hotkey_matches(&s_config.mode_hotkey, usage, modifiers)) {
-        hotkey_set_mode(hotkey_get_mode() == USB_GATEWAY_MODE_PROXY
-            ? USB_GATEWAY_MODE_PASSTHROUGH
-            : USB_GATEWAY_MODE_PROXY);
-        ESP_LOGI(TAG, "Hotkey: gateway mode %s",
-            hotkey_get_mode() == USB_GATEWAY_MODE_PROXY ? "PROXY" : "PASS");
+        const usb_gateway_mode_t current = hotkey_get_mode();
+        usb_gateway_mode_t next = USB_GATEWAY_MODE_PASSTHROUGH;
+        if (current == USB_GATEWAY_MODE_PASSTHROUGH) {
+            next = USB_GATEWAY_MODE_PROXY;
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+        } else if (current == USB_GATEWAY_MODE_PROXY) {
+            next = USB_GATEWAY_MODE_SIMULATE;
+#endif
+        }
+        hotkey_set_mode(next);
+        ESP_LOGI(TAG, "Hotkey: gateway mode %s", hotkey_mode_name(next));
     } else if (hotkey_matches(&s_config.learn_hotkey, usage, modifiers)) {
         analog_engine_request_learning(!s_learn_requested);
     }
@@ -740,6 +829,10 @@ void analog_engine_get_status(analog_engine_status_t *status)
 const char *analog_engine_mode_name(analog_engine_mode_t mode)
 {
     switch (mode) {
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+        case ANALOG_ENGINE_SIMULATE:
+            return "SIMULATE";
+#endif
         case ANALOG_ENGINE_GENERATE:
             return "GENERATE";
         case ANALOG_ENGINE_LEARN:

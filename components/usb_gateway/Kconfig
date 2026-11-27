@@ -1,3 +1,4 @@
+
 menu "USB HID Gateway"
 
 config USB_GATEWAY_ADS7128_ENABLE
@@ -7,6 +8,16 @@ config USB_GATEWAY_ADS7128_ENABLE
 config USB_GATEWAY_DAC7578_ENABLE
     bool "Enable DAC7578"
     default y
+
+config USB_GATEWAY_SIMULATE_ENABLE
+    bool "Enable SIMULATE direct DAC test mode"
+    default n
+    depends on USB_GATEWAY_DAC7578_ENABLE
+    help
+        Adds SIMULATE to the mode-hotkey cycle: PASS -> PROXY -> SIMULATE -> PASS.
+        The configured mouse stick outputs 2 Hz sine/cosine waveforms. The
+        configured key stick outputs opposite 2 Hz sawtooth ramps on its X/Y
+        axes. No learned motion data or HID input is required.
 
 config USB_GATEWAY_ANALOG_I2C_SDA
     int "Analog I2C SDA GPIO"

@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <stdbool.h>
@@ -34,6 +35,8 @@ extern "C" {
  *
  * Usage notation "PPPP:UUUU": HID usage page and usage, 1..4 hex digits each.
  * stick source: "none" | "mouse" | "keys". Optional keys may be omitted.
+ * For source "keys", left/right form one X axis and up/down form one Y axis.
+ * The four keys therefore drive two physical DAC outputs, not four.
  * Unknown keys are rejected. Missing or invalid file: everything disabled.
  */
 
@@ -65,10 +68,10 @@ typedef struct {
     output_stick_source_t source;
     float gain;                     /* mouse: unit deflection per count */
     float return_rate;              /* mouse: 1/s exponential return to center */
-    input_usage_t up;
-    input_usage_t down;
-    input_usage_t left;
-    input_usage_t right;
+    input_usage_t up;             /* positive Y, for example W */
+    input_usage_t down;           /* negative Y, for example S */
+    input_usage_t left;           /* negative X, for example A */
+    input_usage_t right;          /* positive X, for example D */
 } output_stick_config_t;
 
 typedef struct {

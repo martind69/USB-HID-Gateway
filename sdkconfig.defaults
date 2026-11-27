@@ -1,3 +1,4 @@
+
 # =============================================================================
 # Target, Flash & Console
 # =============================================================================
@@ -69,6 +70,7 @@ CONFIG_FATFS_USE_DYN_BUFFERS=y
 # =============================================================================
 CONFIG_USB_GATEWAY_ADS7128_ENABLE=y
 CONFIG_USB_GATEWAY_DAC7578_ENABLE=y
+CONFIG_USB_GATEWAY_SIMULATE_ENABLE=y
 CONFIG_USB_GATEWAY_STATUS_LEDS_ENABLE=y
 CONFIG_USB_GATEWAY_SSD1306_ENABLE=y
 # Analog I2C bus (ADS7128 + DAC7578)
