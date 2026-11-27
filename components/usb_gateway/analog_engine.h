@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <stdbool.h>
@@ -59,6 +58,18 @@ typedef enum {
 } analog_output_fault_t;
 
 typedef struct {
+    bool valid;
+    uint64_t samples;
+    float mse_code2;              /* Accuracy: mean squared error in code^2. */
+    float rmse_code;              /* Accuracy: root mean squared error in codes. */
+    float bias_code;              /* Trueness: mean ADC - DAC reference in codes. */
+    float precision_sd_code;      /* Precision: pooled within-phase standard deviation. */
+    float rmse_mv;
+    float bias_mv;
+    float precision_sd_mv;
+} analog_measurement_metrics_t;
+
+typedef struct {
     analog_engine_mode_t mode;
     bool dac_driving;
     analog_output_fault_t fault;
@@ -71,6 +82,9 @@ typedef struct {
     uint64_t learned_samples;
     esp_err_t last_save_result;
     uint16_t adc_code[ANALOG_HID_COUNT];    /* last sample per logical channel */
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    analog_measurement_metrics_t measurement[4]; /* LX, LY, RX, RY */
+#endif
 } analog_engine_status_t;
 
 /*

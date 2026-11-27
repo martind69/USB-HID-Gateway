@@ -1,4 +1,3 @@
-
 #include "analog_engine.h"
 
 #include <math.h>
@@ -39,6 +38,9 @@
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
 #define SIMULATE_FREQUENCY_HZ        2.0f
 #define SIMULATE_TWO_PI              6.28318530718f
+#define SIMULATE_PERIOD_US           500000ULL
+#define SIMULATE_METRIC_CHANNELS     4U
+#define SIMULATE_PHASE_BINS          250U
 #endif
 
 #if CONFIG_USB_GATEWAY_DAC7578_ENABLE
@@ -90,6 +92,25 @@ static motion_profile_t *s_backup;
 static human_motion_model_t s_model;
 static trajectory_generator_t s_trajectory[OUTPUT_STICK_COUNT];
 static motion_vec2_t s_target[OUTPUT_STICK_COUNT];
+
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+typedef struct {
+    uint32_t count;
+    float mean_error;
+    float m2_error;
+} simulate_phase_stat_t;
+
+typedef struct {
+    uint64_t count;
+    float error_sum;
+    float error_square_sum;
+    uint16_t reference_code;
+    bool reference_valid;
+    simulate_phase_stat_t phase[SIMULATE_PHASE_BINS];
+} simulate_metric_accumulator_t;
+
+static simulate_metric_accumulator_t s_simulate_metric[SIMULATE_METRIC_CHANNELS];
+#endif
 
 static const motion_stick_calibration_t *stick_calibration(size_t stick)
 {
@@ -527,16 +548,39 @@ static void generate(uint64_t now_us, float dt)
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
 /*
  * Direct DAC test independent of HID input and learned motion data.
- * The configured key stick uses one DAC output per axis, not one per key:
- *     left/right (A/D) -> stick X
- *     up/down (W/S)    -> stick Y
- * The configured mouse stick uses its X/Y DAC outputs for sine/cosine.
+ * The key stick uses two physical outputs: A/D form X, W/S form Y.
+ * The mouse stick uses two physical outputs: sine on X, cosine on Y.
  */
+static void simulate_metrics_reset(void)
+{
+    memset(s_simulate_metric, 0, sizeof(s_simulate_metric));
+}
+
 static float simulate_phase(uint64_t now_us)
 {
-    const uint64_t period_us =
-        (uint64_t)(1000000.0f / SIMULATE_FREQUENCY_HZ);
-    return (float)(now_us % period_us) / (float)period_us;
+    return (float)(now_us % SIMULATE_PERIOD_US) /
+        (float)SIMULATE_PERIOD_US;
+}
+
+static void simulate_set_reference(uint8_t channel, uint16_t code)
+{
+    if (channel < SIMULATE_METRIC_CHANNELS) {
+        s_simulate_metric[channel].reference_code = code;
+        s_simulate_metric[channel].reference_valid = true;
+    }
+}
+
+static void simulate_write_axis(
+    uint8_t channel,
+    const motion_axis_calibration_t *calibration,
+    float value)
+{
+    const uint16_t code = analog_mapping_axis_to_code(
+        calibration,
+        value,
+        s_profile->channel[channel].invert);
+    simulate_set_reference(channel, code);
+    write_dac(channel, code);
 }
 
 static void simulate(uint64_t now_us)
@@ -554,23 +598,95 @@ static void simulate(uint64_t now_us)
         const uint8_t channel_x = STICK_CHANNEL_X[stick];
         const uint8_t channel_y = STICK_CHANNEL_Y[stick];
 
-        float x = 0.0f;
-        float y = 0.0f;
         if (config->source == OUTPUT_STICK_SOURCE_MOUSE) {
-            x = sine;
-            y = cosine;
+            simulate_write_axis(channel_x, &calibration->x, sine);
+            simulate_write_axis(channel_y, &calibration->y, cosine);
         } else if (config->source == OUTPUT_STICK_SOURCE_KEYS) {
-            x = rising_saw;
-            y = falling_saw;
-        } else {
+            simulate_write_axis(channel_x, &calibration->x, rising_saw);
+            simulate_write_axis(channel_y, &calibration->y, falling_saw);
+        }
+    }
+}
+
+/*
+ * Measurement definitions, reference = DAC command code:
+ *   accuracy  : MSE and RMSE of ADC - reference
+ *   trueness  : mean error (bias)
+ *   precision : pooled within-phase standard deviation. Comparing samples
+ *               from equal waveform phase removes the deterministic waveform
+ *               and RC response from the repeatability estimate.
+ */
+static void simulate_metrics_update(
+    uint64_t now_us,
+    const uint16_t codes[ANALOG_HID_COUNT],
+    const bool valid[ANALOG_HID_COUNT])
+{
+    const uint32_t phase_bin = (uint32_t)(
+        ((now_us % SIMULATE_PERIOD_US) * SIMULATE_PHASE_BINS) /
+        SIMULATE_PERIOD_US);
+
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        simulate_metric_accumulator_t *metric = &s_simulate_metric[channel];
+        if (!valid[channel] || !metric->reference_valid) {
             continue;
         }
 
-        write_dac(channel_x, analog_mapping_axis_to_code(
-            &calibration->x, x, s_profile->channel[channel_x].invert));
-        write_dac(channel_y, analog_mapping_axis_to_code(
-            &calibration->y, y, s_profile->channel[channel_y].invert));
+        const float error = (float)((int32_t)codes[channel] -
+            (int32_t)metric->reference_code);
+        ++metric->count;
+        metric->error_sum += error;
+        metric->error_square_sum += error * error;
+
+        simulate_phase_stat_t *bin = &metric->phase[phase_bin];
+        ++bin->count;
+        const float delta = error - bin->mean_error;
+        bin->mean_error += delta / (float)bin->count;
+        const float delta_after = error - bin->mean_error;
+        bin->m2_error += delta * delta_after;
     }
+}
+
+static analog_measurement_metrics_t simulate_metrics_result(uint8_t channel)
+{
+    analog_measurement_metrics_t result = { 0 };
+    if (channel >= SIMULATE_METRIC_CHANNELS) {
+        return result;
+    }
+
+    const simulate_metric_accumulator_t *metric = &s_simulate_metric[channel];
+    if (metric->count == 0U) {
+        return result;
+    }
+
+    const float count = (float)metric->count;
+    result.samples = metric->count;
+    result.mse_code2 = metric->error_square_sum / count;
+    result.rmse_code = sqrtf(result.mse_code2);
+    result.bias_code = metric->error_sum / count;
+
+    float pooled_m2 = 0.0f;
+    uint64_t pooled_dof = 0U;
+    for (uint32_t bin_index = 0U;
+         bin_index < SIMULATE_PHASE_BINS;
+         ++bin_index) {
+        const simulate_phase_stat_t *bin = &metric->phase[bin_index];
+        if (bin->count > 1U) {
+            pooled_m2 += bin->m2_error;
+            pooled_dof += (uint64_t)(bin->count - 1U);
+        }
+    }
+
+    if (pooled_dof > 0U) {
+        result.precision_sd_code = sqrtf(pooled_m2 / (float)pooled_dof);
+        result.valid = true;
+    }
+
+    const float mv_per_code =
+        (float)CONFIG_USB_GATEWAY_ANALOG_REFERENCE_MV / 4095.0f;
+    result.rmse_mv = result.rmse_code * mv_per_code;
+    result.bias_mv = result.bias_code * mv_per_code;
+    result.precision_sd_mv = result.precision_sd_code * mv_per_code;
+    return result;
 }
 #endif
 
@@ -639,6 +755,7 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
         }
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
     } else if (next == ANALOG_ENGINE_SIMULATE) {
+        simulate_metrics_reset();
         if (dac_drive(false)) {
             s_mode = ANALOG_ENGINE_SIMULATE;
         } else {
@@ -703,6 +820,7 @@ static void engine_task(void *argument)
                 simulate(now_us);
                 /* ADC reads back the direct DAC test waveforms. */
                 sample_adc(codes, valid);
+                simulate_metrics_update(now_us, codes, valid);
                 break;
 #endif
             case ANALOG_ENGINE_PASSTHROUGH:
@@ -824,6 +942,11 @@ void analog_engine_get_status(analog_engine_status_t *status)
         .last_save_result = s_last_save_result,
     };
     memcpy(status->adc_code, s_codes, sizeof(status->adc_code));
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        status->measurement[channel] = simulate_metrics_result(channel);
+    }
+#endif
 }
 
 const char *analog_engine_mode_name(analog_engine_mode_t mode)

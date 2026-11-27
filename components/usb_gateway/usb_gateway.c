@@ -1,4 +1,3 @@
-
 #include "usb_gateway.h"
 
 #include <stdbool.h>
@@ -445,6 +444,33 @@ static void log_task3_status(void)
         engine.adc_code[ANALOG_HID_RX], engine.adc_code[ANALOG_HID_RY],
         engine.adc_code[ANALOG_HID_LT], engine.adc_code[ANALOG_HID_RT],
         engine.adc_code[ANALOG_HID_L2], engine.adc_code[ANALOG_HID_R2]);
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    if (engine.mode == ANALOG_ENGINE_SIMULATE) {
+        static const char *CHANNEL_NAME[4] = { "LX", "LY", "RX", "RY" };
+        static const char *PHYSICAL_NAME[4] = {
+            "VOUTA", "VOUTB", "VOUTC", "VOUTD"
+        };
+        for (uint8_t channel = 0U; channel < 4U; ++channel) {
+            const analog_measurement_metrics_t *metric =
+                &engine.measurement[channel];
+            ESP_LOGI(TAG,
+                "MEASURE %s/%s n=%llu accuracy_mse=%.3f code2 "
+                "accuracy_rmse=%.3f code/%.3f mV trueness_bias=%+.3f code/%+.3f mV "
+                "precision_sd=%.3f code/%.3f mV valid=%u",
+                CHANNEL_NAME[channel],
+                PHYSICAL_NAME[channel],
+                (unsigned long long)metric->samples,
+                (double)metric->mse_code2,
+                (double)metric->rmse_code,
+                (double)metric->rmse_mv,
+                (double)metric->bias_code,
+                (double)metric->bias_mv,
+                (double)metric->precision_sd_code,
+                (double)metric->precision_sd_mv,
+                metric->valid ? 1U : 0U);
+        }
+    }
+#endif
 }
 #endif
 

@@ -1,4 +1,5 @@
 
+
 menu "USB HID Gateway"
 
 config USB_GATEWAY_ADS7128_ENABLE
@@ -18,6 +19,27 @@ config USB_GATEWAY_SIMULATE_ENABLE
         The configured mouse stick outputs 2 Hz sine/cosine waveforms. The
         configured key stick outputs opposite 2 Hz sawtooth ramps on its X/Y
         axes. No learned motion data or HID input is required.
+
+config USB_GATEWAY_ANALOG_REFERENCE_MV
+    int "Analog reference voltage for measurement conversion (mV)"
+    range 1000 5500
+    default 3300
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+    help
+        Converts 12-bit code errors to millivolts. Set this to the measured
+        common ADC/DAC reference or supply voltage for the most accurate result.
+
+config USB_GATEWAY_ADC_SERIES_RESISTOR_OHM
+    int "ADC series resistor per channel (ohm, documentation)"
+    range 0 2000000
+    default 68000
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_ADC_CEXT_PF
+    int "ADC external capacitor at AIN (pF, documentation)"
+    range 0 1000000
+    default 0
+    depends on USB_GATEWAY_SIMULATE_ENABLE
 
 config USB_GATEWAY_ANALOG_I2C_SDA
     int "Analog I2C SDA GPIO"
