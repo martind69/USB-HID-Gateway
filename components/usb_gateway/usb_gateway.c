@@ -1,3 +1,5 @@
+
+
 #include "usb_gateway.h"
 
 #include <stdbool.h>
@@ -201,7 +203,22 @@ static void refresh_display(void)
         (void)snprintf(detail, sizeof(detail), "GENERATE");
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
     } else if (engine.mode == ANALOG_ENGINE_SIMULATE) {
-        (void)snprintf(detail, sizeof(detail), "SIM 2HZ");
+        switch (engine.measurement_phase) {
+            case ANALOG_MEASUREMENT_STATIC_SETTLE:
+            case ANALOG_MEASUREMENT_STATIC_SAMPLE:
+                (void)snprintf(detail, sizeof(detail), "SIM STEP %u/5",
+                    (unsigned)(engine.measurement_static_point + 1U));
+                break;
+            case ANALOG_MEASUREMENT_DYNAMIC_ALIGN:
+                (void)snprintf(detail, sizeof(detail), "SIM ALIGN");
+                break;
+            case ANALOG_MEASUREMENT_DYNAMIC_RUN:
+                (void)snprintf(detail, sizeof(detail), "SIM DYNAMIC");
+                break;
+            default:
+                (void)snprintf(detail, sizeof(detail), "SIM READY");
+                break;
+        }
 #endif
     } else {
         (void)snprintf(detail, sizeof(detail), "READY");
@@ -450,24 +467,42 @@ static void log_task3_status(void)
         static const char *PHYSICAL_NAME[4] = {
             "VOUTA", "VOUTB", "VOUTC", "VOUTD"
         };
+        const unsigned displayed_static_point =
+            engine.measurement_static_point < 5U
+                ? (unsigned)(engine.measurement_static_point + 1U)
+                : 5U;
+        ESP_LOGI(TAG, "MEASURE phase=%s static_point=%u/5",
+            analog_measurement_phase_name(engine.measurement_phase),
+            displayed_static_point);
         for (uint8_t channel = 0U; channel < 4U; ++channel) {
-            const analog_measurement_metrics_t *metric =
-                &engine.measurement[channel];
+            const analog_static_metrics_t *stat =
+                &engine.static_measurement[channel];
+            const analog_dynamic_metrics_t *dynamic =
+                &engine.dynamic_measurement[channel];
             ESP_LOGI(TAG,
-                "MEASURE %s/%s n=%llu accuracy_mse=%.3f code2 "
+                "MEASURE_STATIC %s/%s points=%u n=%llu "
                 "accuracy_rmse=%.3f code/%.3f mV trueness_bias=%+.3f code/%+.3f mV "
                 "precision_sd=%.3f code/%.3f mV valid=%u",
-                CHANNEL_NAME[channel],
-                PHYSICAL_NAME[channel],
-                (unsigned long long)metric->samples,
-                (double)metric->mse_code2,
-                (double)metric->rmse_code,
-                (double)metric->rmse_mv,
-                (double)metric->bias_code,
-                (double)metric->bias_mv,
-                (double)metric->precision_sd_code,
-                (double)metric->precision_sd_mv,
-                metric->valid ? 1U : 0U);
+                CHANNEL_NAME[channel], PHYSICAL_NAME[channel],
+                (unsigned)stat->points_completed,
+                (unsigned long long)stat->samples,
+                (double)stat->rmse_code, (double)stat->rmse_mv,
+                (double)stat->bias_code, (double)stat->bias_mv,
+                (double)stat->precision_sd_code,
+                (double)stat->precision_sd_mv,
+                stat->valid ? 1U : 0U);
+            ESP_LOGI(TAG,
+                "MEASURE_DYNAMIC %s/%s effective_lag=%lu us n=%llu "
+                "rmse=%.3f code/%.3f mV bias=%+.3f code/%+.3f mV "
+                "max_abs=%.3f code/%.3f mV valid=%u",
+                CHANNEL_NAME[channel], PHYSICAL_NAME[channel],
+                (unsigned long)dynamic->effective_lag_us,
+                (unsigned long long)dynamic->samples,
+                (double)dynamic->rmse_code, (double)dynamic->rmse_mv,
+                (double)dynamic->bias_code, (double)dynamic->bias_mv,
+                (double)dynamic->max_abs_error_code,
+                (double)dynamic->max_abs_error_mv,
+                dynamic->valid ? 1U : 0U);
         }
     }
 #endif

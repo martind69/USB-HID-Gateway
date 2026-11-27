@@ -1,5 +1,8 @@
 
 
+
+
+
 menu "USB HID Gateway"
 
 config USB_GATEWAY_ADS7128_ENABLE
@@ -39,6 +42,70 @@ config USB_GATEWAY_ADC_CEXT_PF
     int "ADC external capacitor at AIN (pF, documentation)"
     range 0 1000000
     default 0
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_MEASURE_STATIC_SETTLE_MS
+    int "Static measurement settling time per point (ms)"
+    range 1 1000
+    default 10
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_MEASURE_STATIC_SAMPLES
+    int "Static measurement samples per point"
+    range 16 4096
+    default 256
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_MEASURE_ALIGN_DURATION_MS
+    int "Dynamic alignment calibration duration (ms)"
+    range 1000 30000
+    default 5000
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_MEASURE_ALIGN_MAX_US
+    int "Maximum dynamic alignment delay (us)"
+    range 1000 50000
+    default 12000
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_MEASURE_ALIGN_STEP_US
+    int "Dynamic alignment delay resolution (us)"
+    range 50 2000
+    default 250
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_MEASURE_JUMP_EXCLUDE_CODES
+    int "Adjacent reference jump excluded from dynamic metrics (codes)"
+    range 128 4095
+    default 1024
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+
+config USB_GATEWAY_MEASURE_ZOH_MAX_US
+    int "Maximum zero-order-hold reference extension (us)"
+    range 100 10000
+    default 3000
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+    help
+        Allows a per-channel ADC timestamp shortly after the latest stored DAC
+        command to use that command as its held reference instead of dropping
+        the sample.
+
+config USB_GATEWAY_MEASURE_ALIGN_MIN_SAMPLES
+    int "Minimum samples per dynamic alignment candidate"
+    range 50 5000
+    default 250
+    depends on USB_GATEWAY_SIMULATE_ENABLE
+    help
+        Minimum accepted ADC/reference pairs required to select an effective
+        lag during the finite alignment window. This must be lower than the
+        number of engine ticks available during that window. It is independent
+        of the larger sample count required before final dynamic metrics are
+        reported as valid.
+
+config USB_GATEWAY_MEASURE_DYNAMIC_MIN_SAMPLES
+    int "Minimum samples for valid aligned dynamic metrics"
+    range 100 10000
+    default 1000
     depends on USB_GATEWAY_SIMULATE_ENABLE
 
 config USB_GATEWAY_ANALOG_I2C_SDA

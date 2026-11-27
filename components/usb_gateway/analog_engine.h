@@ -1,3 +1,5 @@
+
+
 #pragma once
 
 #include <stdbool.h>
@@ -57,17 +59,39 @@ typedef enum {
     ANALOG_OUTPUT_FAULT_DAC_WRITE,      /* preload / power-up failed */
 } analog_output_fault_t;
 
+typedef enum {
+    ANALOG_MEASUREMENT_IDLE = 0,
+    ANALOG_MEASUREMENT_STATIC_SETTLE,
+    ANALOG_MEASUREMENT_STATIC_SAMPLE,
+    ANALOG_MEASUREMENT_DYNAMIC_ALIGN,
+    ANALOG_MEASUREMENT_DYNAMIC_RUN,
+} analog_measurement_phase_t;
+
 typedef struct {
     bool valid;
+    uint8_t points_completed;
     uint64_t samples;
-    float mse_code2;              /* Accuracy: mean squared error in code^2. */
-    float rmse_code;              /* Accuracy: root mean squared error in codes. */
-    float bias_code;              /* Trueness: mean ADC - DAC reference in codes. */
-    float precision_sd_code;      /* Precision: pooled within-phase standard deviation. */
+    float mse_code2;
+    float rmse_code;
+    float bias_code;
+    float precision_sd_code;
     float rmse_mv;
     float bias_mv;
     float precision_sd_mv;
-} analog_measurement_metrics_t;
+} analog_static_metrics_t;
+
+typedef struct {
+    bool valid;
+    uint64_t samples;
+    uint32_t effective_lag_us;
+    float mse_code2;
+    float rmse_code;
+    float bias_code;
+    float max_abs_error_code;
+    float rmse_mv;
+    float bias_mv;
+    float max_abs_error_mv;
+} analog_dynamic_metrics_t;
 
 typedef struct {
     analog_engine_mode_t mode;
@@ -83,7 +107,10 @@ typedef struct {
     esp_err_t last_save_result;
     uint16_t adc_code[ANALOG_HID_COUNT];    /* last sample per logical channel */
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
-    analog_measurement_metrics_t measurement[4]; /* LX, LY, RX, RY */
+    analog_measurement_phase_t measurement_phase;
+    uint8_t measurement_static_point;
+    analog_static_metrics_t static_measurement[4];
+    analog_dynamic_metrics_t dynamic_measurement[4];
 #endif
 } analog_engine_status_t;
 
@@ -113,6 +140,9 @@ void analog_engine_request_learning(bool start);
 void analog_engine_get_status(analog_engine_status_t *status);
 
 const char *analog_engine_mode_name(analog_engine_mode_t mode);
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+const char *analog_measurement_phase_name(analog_measurement_phase_t phase);
+#endif
 
 /* Short names, max. 8 characters (OLED). */
 const char *analog_output_fault_name(analog_output_fault_t fault);

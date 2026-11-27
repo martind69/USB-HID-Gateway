@@ -1,3 +1,6 @@
+
+
+
 #include "analog_engine.h"
 
 #include <math.h>
@@ -40,7 +43,11 @@
 #define SIMULATE_TWO_PI              6.28318530718f
 #define SIMULATE_PERIOD_US           500000ULL
 #define SIMULATE_METRIC_CHANNELS     4U
-#define SIMULATE_PHASE_BINS          250U
+#define SIMULATE_STATIC_POINTS       5U
+#define SIMULATE_REFERENCE_HISTORY   128U
+#define SIMULATE_ALIGN_CANDIDATES    \
+    (CONFIG_USB_GATEWAY_MEASURE_ALIGN_MAX_US / \
+        CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US + 1U)
 #endif
 
 #if CONFIG_USB_GATEWAY_DAC7578_ENABLE
@@ -95,21 +102,48 @@ static motion_vec2_t s_target[OUTPUT_STICK_COUNT];
 
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
 typedef struct {
-    uint32_t count;
-    float mean_error;
-    float m2_error;
-} simulate_phase_stat_t;
+    uint64_t count;
+    float sum;
+    float square_sum;
+    float max_abs;
+} measurement_error_accumulator_t;
 
 typedef struct {
-    uint64_t count;
-    float error_sum;
-    float error_square_sum;
-    uint16_t reference_code;
-    bool reference_valid;
-    simulate_phase_stat_t phase[SIMULATE_PHASE_BINS];
-} simulate_metric_accumulator_t;
+    uint32_t count;
+    float mean;
+    float m2;
+} measurement_repeatability_t;
 
-static simulate_metric_accumulator_t s_simulate_metric[SIMULATE_METRIC_CHANNELS];
+typedef struct {
+    uint64_t timestamp_us;
+    uint16_t code[SIMULATE_METRIC_CHANNELS];
+} simulate_reference_sample_t;
+
+static const float SIMULATE_STATIC_AXIS[SIMULATE_STATIC_POINTS] = {
+    -0.90f, -0.50f, 0.00f, 0.50f, 0.90f,
+};
+
+static analog_measurement_phase_t s_measurement_phase = ANALOG_MEASUREMENT_IDLE;
+static uint8_t s_static_point;
+static uint32_t s_static_samples_at_point;
+static uint64_t s_static_settle_until_us;
+static measurement_error_accumulator_t
+    s_static_error[SIMULATE_METRIC_CHANNELS];
+static measurement_repeatability_t
+    s_static_repeatability[SIMULATE_METRIC_CHANNELS][SIMULATE_STATIC_POINTS];
+
+static simulate_reference_sample_t
+    s_reference_history[SIMULATE_REFERENCE_HISTORY];
+static uint32_t s_reference_head;
+static uint32_t s_reference_count;
+
+static float s_alignment_sse[SIMULATE_METRIC_CHANNELS][SIMULATE_ALIGN_CANDIDATES];
+static uint32_t s_alignment_count[SIMULATE_METRIC_CHANNELS][SIMULATE_ALIGN_CANDIDATES];
+static uint32_t s_alignment_us[SIMULATE_METRIC_CHANNELS];
+static bool s_alignment_valid[SIMULATE_METRIC_CHANNELS];
+static uint64_t s_alignment_started_us;
+static measurement_error_accumulator_t
+    s_dynamic_error[SIMULATE_METRIC_CHANNELS];
 #endif
 
 static const motion_stick_calibration_t *stick_calibration(size_t stick)
@@ -350,6 +384,31 @@ static void sample_adc(uint16_t codes[ANALOG_HID_COUNT], bool valid[ANALOG_HID_C
         codes[channel] = code;
     }
 }
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+/* Timestamp each channel immediately after its RECENT_CHx register read. */
+static void sample_adc_timed(
+    uint16_t codes[ANALOG_HID_COUNT],
+    bool valid[ANALOG_HID_COUNT],
+    uint64_t timestamp_us[ANALOG_HID_COUNT])
+{
+    const bool ready = adc_ready();
+    for (uint8_t channel = 0U; channel < ANALOG_HID_COUNT; ++channel) {
+        uint16_t code = 0U;
+        valid[channel] = ready &&
+            analog_vector_io_read_channel(
+                s_io,
+                (analog_hid_channel_t)channel,
+                &code) == ESP_OK;
+        timestamp_us[channel] = (uint64_t)esp_timer_get_time();
+        if (valid[channel]) {
+            s_codes[channel] = code;
+        } else if (ready) {
+            ++s_adc_errors;
+        }
+        codes[channel] = code;
+    }
+}
+#endif
 
 static void learn_start(void)
 {
@@ -546,146 +605,473 @@ static void generate(uint64_t now_us, float dt)
 }
 
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
-/*
- * Direct DAC test independent of HID input and learned motion data.
- * The key stick uses two physical outputs: A/D form X, W/S form Y.
- * The mouse stick uses two physical outputs: sine on X, cosine on Y.
- */
-static void simulate_metrics_reset(void)
-{
-    memset(s_simulate_metric, 0, sizeof(s_simulate_metric));
-}
-
 static float simulate_phase(uint64_t now_us)
 {
     return (float)(now_us % SIMULATE_PERIOD_US) /
         (float)SIMULATE_PERIOD_US;
 }
 
-static void simulate_set_reference(uint8_t channel, uint16_t code)
+static uint16_t simulate_axis_code(uint8_t channel, float value)
 {
-    if (channel < SIMULATE_METRIC_CHANNELS) {
-        s_simulate_metric[channel].reference_code = code;
-        s_simulate_metric[channel].reference_valid = true;
+    const size_t stick = channel >= ANALOG_HID_RX
+        ? OUTPUT_STICK_RIGHT
+        : OUTPUT_STICK_LEFT;
+    const motion_stick_calibration_t *calibration = stick_calibration(stick);
+    const motion_axis_calibration_t *axis =
+        (channel == ANALOG_HID_LX || channel == ANALOG_HID_RX)
+            ? &calibration->x
+            : &calibration->y;
+    return analog_mapping_axis_to_code(
+        axis, value, s_profile->channel[channel].invert);
+}
+
+static void measurement_error_add(
+    measurement_error_accumulator_t *accumulator,
+    float error)
+{
+    ++accumulator->count;
+    accumulator->sum += error;
+    accumulator->square_sum += error * error;
+    const float absolute = fabsf(error);
+    if (absolute > accumulator->max_abs) {
+        accumulator->max_abs = absolute;
     }
 }
 
-static void simulate_write_axis(
-    uint8_t channel,
-    const motion_axis_calibration_t *calibration,
+static void repeatability_add(
+    measurement_repeatability_t *repeatability,
     float value)
 {
-    const uint16_t code = analog_mapping_axis_to_code(
-        calibration,
-        value,
-        s_profile->channel[channel].invert);
-    simulate_set_reference(channel, code);
-    write_dac(channel, code);
+    ++repeatability->count;
+    const float delta = value - repeatability->mean;
+    repeatability->mean += delta / (float)repeatability->count;
+    const float delta_after = value - repeatability->mean;
+    repeatability->m2 += delta * delta_after;
 }
 
-static void simulate(uint64_t now_us)
+static void simulate_reference_history_reset(void)
+{
+    memset(s_reference_history, 0, sizeof(s_reference_history));
+    s_reference_head = 0U;
+    s_reference_count = 0U;
+}
+
+static void simulate_reference_store(
+    uint64_t timestamp_us,
+    const uint16_t code[SIMULATE_METRIC_CHANNELS])
+{
+    simulate_reference_sample_t *sample =
+        &s_reference_history[s_reference_head];
+    sample->timestamp_us = timestamp_us;
+    memcpy(sample->code, code, sizeof(sample->code));
+    s_reference_head = (s_reference_head + 1U) % SIMULATE_REFERENCE_HISTORY;
+    if (s_reference_count < SIMULATE_REFERENCE_HISTORY) {
+        ++s_reference_count;
+    }
+}
+
+static bool simulate_reference_near_jump(
+    uint8_t channel,
+    uint32_t oldest,
+    uint32_t offset)
+{
+    const simulate_reference_sample_t *before =
+        &s_reference_history[
+            (oldest + offset - 1U) % SIMULATE_REFERENCE_HISTORY];
+    const simulate_reference_sample_t *after =
+        &s_reference_history[
+            (oldest + offset) % SIMULATE_REFERENCE_HISTORY];
+    bool near_jump =
+        abs((int32_t)after->code[channel] -
+            (int32_t)before->code[channel]) >
+        CONFIG_USB_GATEWAY_MEASURE_JUMP_EXCLUDE_CODES;
+
+    if (offset > 1U) {
+        const simulate_reference_sample_t *previous =
+            &s_reference_history[
+                (oldest + offset - 2U) % SIMULATE_REFERENCE_HISTORY];
+        near_jump = near_jump ||
+            abs((int32_t)before->code[channel] -
+                (int32_t)previous->code[channel]) >
+                CONFIG_USB_GATEWAY_MEASURE_JUMP_EXCLUDE_CODES;
+    }
+    if (offset + 1U < s_reference_count) {
+        const simulate_reference_sample_t *next =
+            &s_reference_history[
+                (oldest + offset + 1U) % SIMULATE_REFERENCE_HISTORY];
+        near_jump = near_jump ||
+            abs((int32_t)next->code[channel] -
+                (int32_t)after->code[channel]) >
+                CONFIG_USB_GATEWAY_MEASURE_JUMP_EXCLUDE_CODES;
+    }
+    return near_jump;
+}
+
+static bool simulate_reference_interpolate(
+    uint8_t channel,
+    uint64_t target_us,
+    float *reference)
+{
+    if (channel >= SIMULATE_METRIC_CHANNELS ||
+        reference == NULL ||
+        s_reference_count < 2U) {
+        return false;
+    }
+
+    const uint32_t oldest =
+        (s_reference_head + SIMULATE_REFERENCE_HISTORY - s_reference_count) %
+        SIMULATE_REFERENCE_HISTORY;
+    const simulate_reference_sample_t *latest =
+        &s_reference_history[
+            (s_reference_head + SIMULATE_REFERENCE_HISTORY - 1U) %
+            SIMULATE_REFERENCE_HISTORY];
+
+    /*
+     * A per-channel read can finish after the latest DAC history entry. Hold
+     * the most recent command for this bounded interval instead of dropping
+     * the sample. This is a zero-order hold, matching the physical DAC output.
+     */
+    if (target_us >= latest->timestamp_us) {
+        if (target_us - latest->timestamp_us >
+            CONFIG_USB_GATEWAY_MEASURE_ZOH_MAX_US) {
+            return false;
+        }
+        const uint32_t latest_offset = s_reference_count - 1U;
+        if (latest_offset > 0U &&
+            simulate_reference_near_jump(channel, oldest, latest_offset)) {
+            return false;
+        }
+        *reference = (float)latest->code[channel];
+        return true;
+    }
+
+    for (uint32_t offset = 1U; offset < s_reference_count; ++offset) {
+        const simulate_reference_sample_t *before =
+            &s_reference_history[
+                (oldest + offset - 1U) % SIMULATE_REFERENCE_HISTORY];
+        const simulate_reference_sample_t *after =
+            &s_reference_history[
+                (oldest + offset) % SIMULATE_REFERENCE_HISTORY];
+        if (target_us < before->timestamp_us ||
+            target_us > after->timestamp_us ||
+            after->timestamp_us == before->timestamp_us) {
+            continue;
+        }
+        if (simulate_reference_near_jump(channel, oldest, offset)) {
+            return false;
+        }
+
+        const int32_t delta_code = (int32_t)after->code[channel] -
+            (int32_t)before->code[channel];
+        const float interpolation =
+            (float)(target_us - before->timestamp_us) /
+            (float)(after->timestamp_us - before->timestamp_us);
+        *reference = (float)before->code[channel] +
+            interpolation * (float)delta_code;
+        return true;
+    }
+    return false;
+}
+
+static void simulate_write_codes(
+    uint64_t now_us,
+    const uint16_t code[SIMULATE_METRIC_CHANNELS])
+{
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        write_dac(channel, code[channel]);
+    }
+    simulate_reference_store(now_us, code);
+}
+
+static void simulate_dynamic_write(uint64_t now_us)
 {
     const float phase = simulate_phase(now_us);
     const float angle = SIMULATE_TWO_PI * phase;
-    const float sine = sinf(angle);
-    const float cosine = cosf(angle);
-    const float rising_saw = 2.0f * phase - 1.0f;
-    const float falling_saw = 1.0f - 2.0f * phase;
-
-    for (size_t stick = 0U; stick < OUTPUT_STICK_COUNT; ++stick) {
-        const output_stick_config_t *config = &s_config.stick[stick];
-        const motion_stick_calibration_t *calibration = stick_calibration(stick);
-        const uint8_t channel_x = STICK_CHANNEL_X[stick];
-        const uint8_t channel_y = STICK_CHANNEL_Y[stick];
-
-        if (config->source == OUTPUT_STICK_SOURCE_MOUSE) {
-            simulate_write_axis(channel_x, &calibration->x, sine);
-            simulate_write_axis(channel_y, &calibration->y, cosine);
-        } else if (config->source == OUTPUT_STICK_SOURCE_KEYS) {
-            simulate_write_axis(channel_x, &calibration->x, rising_saw);
-            simulate_write_axis(channel_y, &calibration->y, falling_saw);
-        }
+    const float axis[SIMULATE_METRIC_CHANNELS] = {
+        2.0f * phase - 1.0f,
+        1.0f - 2.0f * phase,
+        sinf(angle),
+        cosf(angle),
+    };
+    uint16_t code[SIMULATE_METRIC_CHANNELS];
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        code[channel] = simulate_axis_code(channel, axis[channel]);
     }
+    simulate_write_codes(now_us, code);
 }
 
-/*
- * Measurement definitions, reference = DAC command code:
- *   accuracy  : MSE and RMSE of ADC - reference
- *   trueness  : mean error (bias)
- *   precision : pooled within-phase standard deviation. Comparing samples
- *               from equal waveform phase removes the deterministic waveform
- *               and RC response from the repeatability estimate.
- */
-static void simulate_metrics_update(
+static void simulate_static_write(uint64_t now_us)
+{
+    uint16_t code[SIMULATE_METRIC_CHANNELS];
+    const float axis = SIMULATE_STATIC_AXIS[s_static_point];
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        code[channel] = simulate_axis_code(channel, axis);
+    }
+    simulate_write_codes(now_us, code);
+}
+
+static void simulate_measurement_reset(uint64_t now_us)
+{
+    memset(s_static_error, 0, sizeof(s_static_error));
+    memset(s_static_repeatability, 0, sizeof(s_static_repeatability));
+    memset(s_alignment_sse, 0, sizeof(s_alignment_sse));
+    memset(s_alignment_count, 0, sizeof(s_alignment_count));
+    memset(s_alignment_us, 0, sizeof(s_alignment_us));
+    memset(s_alignment_valid, 0, sizeof(s_alignment_valid));
+    memset(s_dynamic_error, 0, sizeof(s_dynamic_error));
+    simulate_reference_history_reset();
+    s_static_point = 0U;
+    s_static_samples_at_point = 0U;
+    s_measurement_phase = ANALOG_MEASUREMENT_STATIC_SETTLE;
+    simulate_static_write(now_us);
+    s_static_settle_until_us = now_us +
+        (uint64_t)CONFIG_USB_GATEWAY_MEASURE_STATIC_SETTLE_MS * 1000ULL;
+    ESP_LOGI(TAG,
+        "Measurement: static point 1/%u, settle=%u ms, samples=%u",
+        (unsigned)SIMULATE_STATIC_POINTS,
+        (unsigned)CONFIG_USB_GATEWAY_MEASURE_STATIC_SETTLE_MS,
+        (unsigned)CONFIG_USB_GATEWAY_MEASURE_STATIC_SAMPLES);
+}
+
+static void simulate_begin_dynamic_alignment(uint64_t now_us)
+{
+    s_measurement_phase = ANALOG_MEASUREMENT_DYNAMIC_ALIGN;
+    s_alignment_started_us = now_us;
+    simulate_reference_history_reset();
+    ESP_LOGI(TAG,
+        "Measurement: dynamic alignment for %u ms, delay candidates 0..%u us / %u us",
+        (unsigned)CONFIG_USB_GATEWAY_MEASURE_ALIGN_DURATION_MS,
+        (unsigned)CONFIG_USB_GATEWAY_MEASURE_ALIGN_MAX_US,
+        (unsigned)CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US);
+}
+
+static void simulate_static_update(
     uint64_t now_us,
     const uint16_t codes[ANALOG_HID_COUNT],
     const bool valid[ANALOG_HID_COUNT])
 {
-    const uint32_t phase_bin = (uint32_t)(
-        ((now_us % SIMULATE_PERIOD_US) * SIMULATE_PHASE_BINS) /
-        SIMULATE_PERIOD_US);
+    if (s_measurement_phase == ANALOG_MEASUREMENT_STATIC_SETTLE) {
+        if (now_us < s_static_settle_until_us) {
+            return;
+        }
+        s_measurement_phase = ANALOG_MEASUREMENT_STATIC_SAMPLE;
+        s_static_samples_at_point = 0U;
+    }
 
+    const simulate_reference_sample_t *reference =
+        &s_reference_history[
+            (s_reference_head + SIMULATE_REFERENCE_HISTORY - 1U) %
+            SIMULATE_REFERENCE_HISTORY];
+    bool all_valid = true;
     for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
-        simulate_metric_accumulator_t *metric = &s_simulate_metric[channel];
-        if (!valid[channel] || !metric->reference_valid) {
+        if (!valid[channel]) {
+            all_valid = false;
             continue;
         }
-
         const float error = (float)((int32_t)codes[channel] -
-            (int32_t)metric->reference_code);
-        ++metric->count;
-        metric->error_sum += error;
-        metric->error_square_sum += error * error;
+            (int32_t)reference->code[channel]);
+        measurement_error_add(&s_static_error[channel], error);
+        repeatability_add(
+            &s_static_repeatability[channel][s_static_point],
+            (float)codes[channel]);
+    }
+    if (!all_valid) {
+        return;
+    }
 
-        simulate_phase_stat_t *bin = &metric->phase[phase_bin];
-        ++bin->count;
-        const float delta = error - bin->mean_error;
-        bin->mean_error += delta / (float)bin->count;
-        const float delta_after = error - bin->mean_error;
-        bin->m2_error += delta * delta_after;
+    ++s_static_samples_at_point;
+    if (s_static_samples_at_point < CONFIG_USB_GATEWAY_MEASURE_STATIC_SAMPLES) {
+        return;
+    }
+
+    ++s_static_point;
+    if (s_static_point >= SIMULATE_STATIC_POINTS) {
+        simulate_begin_dynamic_alignment(now_us);
+        return;
+    }
+
+    s_measurement_phase = ANALOG_MEASUREMENT_STATIC_SETTLE;
+    simulate_static_write(now_us);
+    s_static_settle_until_us = now_us +
+        (uint64_t)CONFIG_USB_GATEWAY_MEASURE_STATIC_SETTLE_MS * 1000ULL;
+    ESP_LOGI(TAG,
+        "Measurement: static point %u/%u",
+        (unsigned)(s_static_point + 1U),
+        (unsigned)SIMULATE_STATIC_POINTS);
+}
+
+static void simulate_alignment_update(
+    const uint64_t adc_timestamp_us[ANALOG_HID_COUNT],
+    const uint16_t codes[ANALOG_HID_COUNT],
+    const bool valid[ANALOG_HID_COUNT])
+{
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        if (!valid[channel]) {
+            continue;
+        }
+        for (uint32_t candidate = 0U;
+             candidate < SIMULATE_ALIGN_CANDIDATES;
+             ++candidate) {
+            const uint32_t delay_us =
+                candidate * CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US;
+            if (adc_timestamp_us[channel] < delay_us) {
+                continue;
+            }
+            float reference;
+            if (!simulate_reference_interpolate(
+                    channel,
+                    adc_timestamp_us[channel] - delay_us,
+                    &reference)) {
+                continue;
+            }
+            const float error = (float)codes[channel] - reference;
+            s_alignment_sse[channel][candidate] += error * error;
+            ++s_alignment_count[channel][candidate];
+        }
     }
 }
 
-static analog_measurement_metrics_t simulate_metrics_result(uint8_t channel)
+static void simulate_alignment_finish(void)
 {
-    analog_measurement_metrics_t result = { 0 };
-    if (channel >= SIMULATE_METRIC_CHANNELS) {
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        float best_mse = INFINITY;
+        uint32_t best_candidate = 0U;
+        uint32_t best_count = 0U;
+        for (uint32_t candidate = 0U;
+             candidate < SIMULATE_ALIGN_CANDIDATES;
+             ++candidate) {
+            const uint32_t count = s_alignment_count[channel][candidate];
+            if (count < CONFIG_USB_GATEWAY_MEASURE_ALIGN_MIN_SAMPLES) {
+                continue;
+            }
+            const float mse = s_alignment_sse[channel][candidate] /
+                (float)count;
+            if (mse < best_mse) {
+                best_mse = mse;
+                best_candidate = candidate;
+                best_count = count;
+            }
+        }
+        s_alignment_valid[channel] = best_count >=
+            CONFIG_USB_GATEWAY_MEASURE_ALIGN_MIN_SAMPLES;
+        s_alignment_us[channel] = s_alignment_valid[channel]
+            ? best_candidate * CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US
+            : 0U;
+    }
+    memset(s_dynamic_error, 0, sizeof(s_dynamic_error));
+    s_measurement_phase = ANALOG_MEASUREMENT_DYNAMIC_RUN;
+    ESP_LOGI(TAG,
+        "Measurement effective lag: "
+        "LX=%lu/%u/%lu LY=%lu/%u/%lu RX=%lu/%u/%lu RY=%lu/%u/%lu "
+        "us/valid/samples",
+        (unsigned long)s_alignment_us[0], s_alignment_valid[0] ? 1U : 0U,
+        (unsigned long)s_alignment_count[0][
+            s_alignment_us[0] / CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US],
+        (unsigned long)s_alignment_us[1], s_alignment_valid[1] ? 1U : 0U,
+        (unsigned long)s_alignment_count[1][
+            s_alignment_us[1] / CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US],
+        (unsigned long)s_alignment_us[2], s_alignment_valid[2] ? 1U : 0U,
+        (unsigned long)s_alignment_count[2][
+            s_alignment_us[2] / CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US],
+        (unsigned long)s_alignment_us[3], s_alignment_valid[3] ? 1U : 0U,
+        (unsigned long)s_alignment_count[3][
+            s_alignment_us[3] / CONFIG_USB_GATEWAY_MEASURE_ALIGN_STEP_US]);
+}
+
+static void simulate_dynamic_update(
+    const uint64_t adc_timestamp_us[ANALOG_HID_COUNT],
+    const uint16_t codes[ANALOG_HID_COUNT],
+    const bool valid[ANALOG_HID_COUNT])
+{
+    for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
+        if (!valid[channel] ||
+            !s_alignment_valid[channel] ||
+            adc_timestamp_us[channel] < s_alignment_us[channel]) {
+            continue;
+        }
+        float reference;
+        if (!simulate_reference_interpolate(
+                channel,
+                adc_timestamp_us[channel] - s_alignment_us[channel],
+                &reference)) {
+            continue;
+        }
+        measurement_error_add(
+            &s_dynamic_error[channel],
+            (float)codes[channel] - reference);
+    }
+}
+
+static analog_static_metrics_t simulate_static_result(uint8_t channel)
+{
+    analog_static_metrics_t result = { 0 };
+    if (channel >= SIMULATE_METRIC_CHANNELS ||
+        s_static_error[channel].count == 0U) {
         return result;
     }
-
-    const simulate_metric_accumulator_t *metric = &s_simulate_metric[channel];
-    if (metric->count == 0U) {
-        return result;
+    const measurement_error_accumulator_t *error = &s_static_error[channel];
+    const float count = (float)error->count;
+    result.samples = error->count;
+    result.points_completed = s_static_point > SIMULATE_STATIC_POINTS
+        ? SIMULATE_STATIC_POINTS
+        : s_static_point;
+    if (s_measurement_phase >= ANALOG_MEASUREMENT_DYNAMIC_ALIGN) {
+        result.points_completed = SIMULATE_STATIC_POINTS;
     }
-
-    const float count = (float)metric->count;
-    result.samples = metric->count;
-    result.mse_code2 = metric->error_square_sum / count;
+    result.mse_code2 = error->square_sum / count;
     result.rmse_code = sqrtf(result.mse_code2);
-    result.bias_code = metric->error_sum / count;
+    result.bias_code = error->sum / count;
 
     float pooled_m2 = 0.0f;
-    uint64_t pooled_dof = 0U;
-    for (uint32_t bin_index = 0U;
-         bin_index < SIMULATE_PHASE_BINS;
-         ++bin_index) {
-        const simulate_phase_stat_t *bin = &metric->phase[bin_index];
-        if (bin->count > 1U) {
-            pooled_m2 += bin->m2_error;
-            pooled_dof += (uint64_t)(bin->count - 1U);
+    uint32_t pooled_dof = 0U;
+    for (uint8_t point = 0U; point < SIMULATE_STATIC_POINTS; ++point) {
+        const measurement_repeatability_t *repeatability =
+            &s_static_repeatability[channel][point];
+        if (repeatability->count > 1U) {
+            pooled_m2 += repeatability->m2;
+            pooled_dof += repeatability->count - 1U;
         }
     }
-
     if (pooled_dof > 0U) {
         result.precision_sd_code = sqrtf(pooled_m2 / (float)pooled_dof);
-        result.valid = true;
     }
+    result.valid = result.points_completed == SIMULATE_STATIC_POINTS &&
+        pooled_dof > 0U;
 
     const float mv_per_code =
         (float)CONFIG_USB_GATEWAY_ANALOG_REFERENCE_MV / 4095.0f;
     result.rmse_mv = result.rmse_code * mv_per_code;
     result.bias_mv = result.bias_code * mv_per_code;
     result.precision_sd_mv = result.precision_sd_code * mv_per_code;
+    return result;
+}
+
+static analog_dynamic_metrics_t simulate_dynamic_result(uint8_t channel)
+{
+    analog_dynamic_metrics_t result = { 0 };
+    if (channel >= SIMULATE_METRIC_CHANNELS) {
+        return result;
+    }
+    const measurement_error_accumulator_t *error = &s_dynamic_error[channel];
+    result.effective_lag_us = s_alignment_us[channel];
+    if (error->count == 0U) {
+        return result;
+    }
+    const float count = (float)error->count;
+    result.samples = error->count;
+    result.mse_code2 = error->square_sum / count;
+    result.rmse_code = sqrtf(result.mse_code2);
+    result.bias_code = error->sum / count;
+    result.max_abs_error_code = error->max_abs;
+    const float mv_per_code =
+        (float)CONFIG_USB_GATEWAY_ANALOG_REFERENCE_MV / 4095.0f;
+    result.rmse_mv = result.rmse_code * mv_per_code;
+    result.bias_mv = result.bias_code * mv_per_code;
+    result.max_abs_error_mv = result.max_abs_error_code * mv_per_code;
+    result.valid =
+        s_measurement_phase == ANALOG_MEASUREMENT_DYNAMIC_RUN &&
+        s_alignment_valid[channel] &&
+        error->count >= CONFIG_USB_GATEWAY_MEASURE_DYNAMIC_MIN_SAMPLES;
     return result;
 }
 #endif
@@ -755,9 +1141,9 @@ static void switch_mode(analog_engine_mode_t next, uint64_t now_us)
         }
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
     } else if (next == ANALOG_ENGINE_SIMULATE) {
-        simulate_metrics_reset();
         if (dac_drive(false)) {
             s_mode = ANALOG_ENGINE_SIMULATE;
+            simulate_measurement_reset(now_us);
         } else {
             (void)dac_release();
         }
@@ -791,6 +1177,9 @@ static void engine_task(void *argument)
     TickType_t wake = xTaskGetTickCount();
     uint16_t codes[ANALOG_HID_COUNT];
     bool valid[ANALOG_HID_COUNT];
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    uint64_t adc_timestamp_us[ANALOG_HID_COUNT];
+#endif
 
     while (true) {
         if (xTaskDelayUntil(&wake, period) == pdFALSE) {
@@ -816,12 +1205,29 @@ static void engine_task(void *argument)
                 sample_adc(codes, valid);
                 break;
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
-            case ANALOG_ENGINE_SIMULATE:
-                simulate(now_us);
-                /* ADC reads back the direct DAC test waveforms. */
-                sample_adc(codes, valid);
-                simulate_metrics_update(now_us, codes, valid);
+            case ANALOG_ENGINE_SIMULATE: {
+                if (s_measurement_phase == ANALOG_MEASUREMENT_DYNAMIC_ALIGN ||
+                    s_measurement_phase == ANALOG_MEASUREMENT_DYNAMIC_RUN) {
+                    simulate_dynamic_write(now_us);
+                }
+                sample_adc_timed(codes, valid, adc_timestamp_us);
+                const uint64_t latest_adc_timestamp_us =
+                    adc_timestamp_us[ANALOG_HID_COUNT - 1U];
+                if (s_measurement_phase == ANALOG_MEASUREMENT_STATIC_SETTLE ||
+                    s_measurement_phase == ANALOG_MEASUREMENT_STATIC_SAMPLE) {
+                    simulate_static_update(latest_adc_timestamp_us, codes, valid);
+                } else if (s_measurement_phase == ANALOG_MEASUREMENT_DYNAMIC_ALIGN) {
+                    simulate_alignment_update(adc_timestamp_us, codes, valid);
+                    if (latest_adc_timestamp_us - s_alignment_started_us >=
+                        (uint64_t)CONFIG_USB_GATEWAY_MEASURE_ALIGN_DURATION_MS *
+                            1000ULL) {
+                        simulate_alignment_finish();
+                    }
+                } else if (s_measurement_phase == ANALOG_MEASUREMENT_DYNAMIC_RUN) {
+                    simulate_dynamic_update(adc_timestamp_us, codes, valid);
+                }
                 break;
+            }
 #endif
             case ANALOG_ENGINE_PASSTHROUGH:
             default:
@@ -943,8 +1349,11 @@ void analog_engine_get_status(analog_engine_status_t *status)
     };
     memcpy(status->adc_code, s_codes, sizeof(status->adc_code));
 #if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+    status->measurement_phase = s_measurement_phase;
+    status->measurement_static_point = s_static_point;
     for (uint8_t channel = 0U; channel < SIMULATE_METRIC_CHANNELS; ++channel) {
-        status->measurement[channel] = simulate_metrics_result(channel);
+        status->static_measurement[channel] = simulate_static_result(channel);
+        status->dynamic_measurement[channel] = simulate_dynamic_result(channel);
     }
 #endif
 }
@@ -965,6 +1374,25 @@ const char *analog_engine_mode_name(analog_engine_mode_t mode)
             return "PASSTHROUGH";
     }
 }
+
+#if CONFIG_USB_GATEWAY_SIMULATE_ENABLE
+const char *analog_measurement_phase_name(analog_measurement_phase_t phase)
+{
+    switch (phase) {
+        case ANALOG_MEASUREMENT_STATIC_SETTLE:
+            return "STATIC-SETTLE";
+        case ANALOG_MEASUREMENT_STATIC_SAMPLE:
+            return "STATIC-SAMPLE";
+        case ANALOG_MEASUREMENT_DYNAMIC_ALIGN:
+            return "DYNAMIC-ALIGN";
+        case ANALOG_MEASUREMENT_DYNAMIC_RUN:
+            return "DYNAMIC-RUN";
+        case ANALOG_MEASUREMENT_IDLE:
+        default:
+            return "IDLE";
+    }
+}
+#endif
 
 const char *analog_output_fault_name(analog_output_fault_t fault)
 {
